@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 
@@ -12,6 +12,7 @@ function SourceListRunPage() {
   const [storyId, setStoryId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const pollRef = useRef(null)
 
   useEffect(() => {
     if (promptId) {
@@ -19,6 +20,7 @@ function SourceListRunPage() {
         .then(setPrompt)
         .catch((err) => setError(err.message))
     }
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [promptId])
 
   async function handleRun() {
@@ -29,11 +31,29 @@ function SourceListRunPage() {
         method: 'POST',
         body: JSON.stringify({ prompt_id: parseInt(promptId, 10) }),
       })
-      setOutput(data.source_list_output)
       setStoryId(data.story_id)
+      // Start polling
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await apiClient(`/pipeline/status/${data.story_id}`)
+          if (status.status === 'completed') {
+            clearInterval(pollRef.current)
+            setOutput(status.source_list_output)
+            setLoading(false)
+          } else if (status.status === 'failed') {
+            clearInterval(pollRef.current)
+            const failedRun = status.runs.find(r => r.status === 'failed')
+            setError(failedRun ? failedRun.error_message : 'Pipeline failed')
+            setLoading(false)
+          }
+        } catch (err) {
+          clearInterval(pollRef.current)
+          setError(err.message)
+          setLoading(false)
+        }
+      }, 3000)
     } catch (err) {
       setError(err.message)
-    } finally {
       setLoading(false)
     }
   }
@@ -62,7 +82,7 @@ function SourceListRunPage() {
 
       {!output && (
         <button onClick={handleRun} disabled={loading} style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}>
-          {loading ? 'Running...' : 'Run Source List'}
+          {loading ? 'Running... (this may take up to 60 seconds)' : 'Run Source List'}
         </button>
       )}
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiClient } from '../api/client'
 
@@ -12,6 +12,7 @@ function PipelinePage() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const pollRef = useRef(null)
 
   useEffect(() => {
     apiClient('/prompts?type=papa')
@@ -20,6 +21,7 @@ function PipelinePage() {
         if (data.length > 0) setSelectedPromptId(data[0].id)
       })
       .catch((err) => setError(err.message))
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
   async function handleRun() {
@@ -27,7 +29,7 @@ function PipelinePage() {
     setLoading(true)
     setError(null)
     try {
-      const data = await apiClient('/pipeline/run', {
+      await apiClient('/pipeline/run', {
         method: 'POST',
         body: JSON.stringify({
           story_id: parseInt(storyId, 10),
@@ -35,10 +37,28 @@ function PipelinePage() {
           refinement_prompt_id: selectedPromptId,
         }),
       })
-      setResult(data)
+      // Start polling for result
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await apiClient(`/pipeline/status/${storyId}`)
+          if (status.status === 'completed') {
+            clearInterval(pollRef.current)
+            setResult(status)
+            setLoading(false)
+          } else if (status.status === 'failed') {
+            clearInterval(pollRef.current)
+            const failedRun = status.runs.find(r => r.status === 'failed')
+            setError(failedRun ? failedRun.error_message : 'Pipeline failed')
+            setLoading(false)
+          }
+        } catch (err) {
+          clearInterval(pollRef.current)
+          setError(err.message)
+          setLoading(false)
+        }
+      }, 3000)
     } catch (err) {
       setError(err.message)
-    } finally {
       setLoading(false)
     }
   }
@@ -83,7 +103,7 @@ function PipelinePage() {
             disabled={loading || !selectedPromptId}
             style={{ padding: '0.75rem 2rem', fontSize: '1rem', background: '#28a745', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
           >
-            {loading ? 'Running Pipeline...' : 'Run Pipeline'}
+            {loading ? 'Running Pipeline... (this may take a few minutes)' : 'Run Pipeline'}
           </button>
         </>
       )}
