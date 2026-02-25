@@ -2,6 +2,34 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 
+/**
+ * Parse source list output into selectable topic sections.
+ * Splits on numbered topics (e.g. "1. **Title**" or "1. Title").
+ * Returns array of { title, body } objects.
+ */
+function parseTopics(text) {
+  if (!text) return []
+
+  // Split on lines that start with a digit followed by ". " (numbered topics)
+  const parts = text.split(/\n(?=\d+\.\s)/)
+
+  const topics = []
+  for (const part of parts) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+
+    // Check if this part starts with a numbered topic
+    const match = trimmed.match(/^(\d+)\.\s+\*{0,2}(.+?)\*{0,2}\s*\n?([\s\S]*)$/)
+    if (match) {
+      // Clean up the title — remove leading/trailing ** markdown bold
+      const title = match[2].replace(/^\*+|\*+$/g, '').trim()
+      topics.push({ title: `${match[1]}. ${title}`, body: trimmed })
+    }
+  }
+
+  return topics
+}
+
 function SourceListRunPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -13,6 +41,7 @@ function SourceListRunPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [statusMsg, setStatusMsg] = useState(null)
+  const [selectedTopic, setSelectedTopic] = useState(null)
   const pollRef = useRef(null)
 
   useEffect(() => {
@@ -28,6 +57,7 @@ function SourceListRunPage() {
     setLoading(true)
     setError(null)
     setStatusMsg('Sending request...')
+    setSelectedTopic(null)
     try {
       const data = await apiClient('/pipeline/source-list', {
         method: 'POST',
@@ -72,13 +102,15 @@ function SourceListRunPage() {
   }
 
   function handleProceed() {
-    const selectedText = window.getSelection().toString() || output
-    navigate(`/pipeline?story_id=${storyId}&selected=${encodeURIComponent(selectedText.substring(0, 2000))}`)
+    if (!selectedTopic) return
+    navigate(`/pipeline?story_id=${storyId}&selected=${encodeURIComponent(selectedTopic.substring(0, 2000))}`)
   }
 
   if (!promptId) {
     return <p>No prompt_id provided. Go to <a href="/prompts">Prompt Library</a> and run a Source List.</p>
   }
+
+  const topics = parseTopics(output)
 
   return (
     <div>
@@ -111,12 +143,52 @@ function SourceListRunPage() {
       {output && (
         <div style={{ marginTop: '1rem' }}>
           <h2>Results</h2>
-          <p style={{ color: '#666', fontSize: '0.9rem' }}>Select text below to choose a story, then click "Proceed to Pipeline".</p>
-          <pre style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '6px', whiteSpace: 'pre-wrap', border: '1px solid #ddd' }}>
-            {output}
-          </pre>
-          <button onClick={handleProceed} style={{ marginTop: '1rem', padding: '0.75rem 2rem', fontSize: '1rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-            Proceed to Pipeline
+          <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '1rem' }}>
+            Click a topic to select it, then click "Proceed to Pipeline".
+          </p>
+
+          {topics.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {topics.map((topic, i) => (
+                <div
+                  key={i}
+                  onClick={() => setSelectedTopic(topic.body)}
+                  style={{
+                    padding: '1rem',
+                    borderRadius: '6px',
+                    border: selectedTopic === topic.body ? '2px solid #007bff' : '1px solid #ddd',
+                    background: selectedTopic === topic.body ? '#e7f1ff' : '#f9f9f9',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <strong style={{ fontSize: '1.05rem' }}>{topic.title}</strong>
+                  <pre style={{ whiteSpace: 'pre-wrap', margin: '0.5rem 0 0', fontSize: '0.85rem', color: '#444' }}>
+                    {topic.body.replace(/^\d+\.\s+\*{0,2}.+?\*{0,2}\s*\n?/, '').trim()}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <pre style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '6px', whiteSpace: 'pre-wrap', border: '1px solid #ddd' }}>
+              {output}
+            </pre>
+          )}
+
+          <button
+            onClick={handleProceed}
+            disabled={!selectedTopic}
+            style={{
+              marginTop: '1rem',
+              padding: '0.75rem 2rem',
+              fontSize: '1rem',
+              background: selectedTopic ? '#007bff' : '#ccc',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: selectedTopic ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {selectedTopic ? 'Proceed to Pipeline' : 'Select a topic to proceed'}
           </button>
         </div>
       )}
