@@ -1,0 +1,87 @@
+import { useState, useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { apiClient } from '../api/client'
+
+function SourceListRunPage() {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const promptId = searchParams.get('prompt_id')
+
+  const [prompt, setPrompt] = useState(null)
+  const [output, setOutput] = useState(null)
+  const [storyId, setStoryId] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (promptId) {
+      apiClient(`/prompts/${promptId}`)
+        .then(setPrompt)
+        .catch((err) => setError(err.message))
+    }
+  }, [promptId])
+
+  async function handleRun() {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await apiClient('/pipeline/source-list', {
+        method: 'POST',
+        body: JSON.stringify({ prompt_id: parseInt(promptId, 10) }),
+      })
+      setOutput(data.source_list_output)
+      setStoryId(data.story_id)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleProceed() {
+    const selectedText = window.getSelection().toString() || output
+    navigate(`/pipeline?story_id=${storyId}&selected=${encodeURIComponent(selectedText.substring(0, 2000))}`)
+  }
+
+  if (!promptId) {
+    return <p>No prompt_id provided. Go to <a href="/prompts">Prompt Library</a> and run a Source List.</p>
+  }
+
+  return (
+    <div>
+      <h1>Source List Runner</h1>
+
+      {prompt && (
+        <div style={{ background: '#f4f4f4', padding: '1rem', borderRadius: '6px', marginBottom: '1rem' }}>
+          <h3>{prompt.name}</h3>
+          {prompt.opportunity && <p><strong>Opportunity:</strong> {prompt.opportunity} | <strong>State:</strong> {prompt.state}</p>}
+          {prompt.publications && <p><strong>Publications:</strong> {prompt.publications}</p>}
+          {prompt.pitches_per_week && <p><strong>Pitches/Week:</strong> {prompt.pitches_per_week}</p>}
+        </div>
+      )}
+
+      {!output && (
+        <button onClick={handleRun} disabled={loading} style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}>
+          {loading ? 'Running...' : 'Run Source List'}
+        </button>
+      )}
+
+      {error && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
+
+      {output && (
+        <div style={{ marginTop: '1rem' }}>
+          <h2>Results</h2>
+          <p style={{ color: '#666', fontSize: '0.9rem' }}>Select text below to choose a story, then click "Proceed to Pipeline".</p>
+          <pre style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '6px', whiteSpace: 'pre-wrap', border: '1px solid #ddd' }}>
+            {output}
+          </pre>
+          <button onClick={handleProceed} style={{ marginTop: '1rem', padding: '0.75rem 2rem', fontSize: '1rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            Proceed to Pipeline
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default SourceListRunPage

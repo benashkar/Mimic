@@ -448,16 +448,16 @@ cr-news-pipeline/
 
 ---
 
-### Phase 2: Grok API Integration
+### Phase 2: Grok API Integration ✅
 1. `grok_service.py`: `call_grok(prompt, context)` → xAI API.
-2. Error handling (rate limits, timeouts).
-3. Extensively commented.
+2. Error handling (rate limits, timeouts, malformed responses).
+3. Config: GROK_API_KEY, GROK_API_URL, GROK_MODEL, GROK_TIMEOUT_SECONDS.
 
-**Tests (fixtures):** success, timeout, rate limit.
+**Tests:** success, context, timeout, rate limit, server error, missing key, malformed response. (7 tests)
 
 ---
 
-### Phase 3: Prompt Library (CRUD + UI + Seed Data)
+### Phase 3: Prompt Library (CRUD + UI + Seed Data) ✅
 **Backend:**
 - `GET /api/prompts?type=source-list` — filter by type, opportunity, state.
 - `POST/PUT/DELETE /api/prompts` — admin only.
@@ -473,15 +473,15 @@ cr-news-pipeline/
 
 ---
 
-### Phase 4: Source List Runner
+### Phase 4: Source List Runner ✅
 1. `POST /api/pipeline/source-list` — `{ prompt_id }`.
 2. `SourceListRunPage.jsx`: shows routing metadata, runs Grok, displays selectable results.
 
-**Tests:** run success, wrong prompt type.
+**Tests:** run success, wrong prompt type. (2 tests)
 
 ---
 
-### Phase 5: Pipeline Execution (Main Feature)
+### Phase 5: Pipeline Execution (Main Feature) ✅
 
 **Core pipeline logic in `pipeline_service.py`:**
 ```python
@@ -562,17 +562,17 @@ def parse_decision(amy_bot_output: str) -> bool:
 
 ---
 
-### Phase 6: Stories Log & Dashboard
-1. Paginated story list: filter by valid/rejected, opportunity, state, refinement prompt used.
-2. Story detail: all inputs/outputs, which prompts used, Amy Bot full response.
-3. Dashboard: approval rate, stories today, per opportunity.
+### Phase 6: Stories Log & Dashboard ✅
+1. Paginated story list: filter by valid/rejected, opportunity, state.
+2. Story detail: all inputs/outputs, pipeline runs, Amy Bot full response.
+3. Dashboard: approval rate, total/approved/rejected counts, per-opportunity breakdown.
 
 ---
 
-### Phase 7: Docker, CI/CD & Deployment
+### Phase 7: Docker, CI/CD & Deployment ✅
 1. Dockerfiles (no `COPY ../`).
-2. GitHub Actions CI on PRs to master.
-3. Deploy to Render free tier. Manual deploy.
+2. GitHub Actions CI on push/PR to master (pytest + frontend build).
+3. Deploy to Render free tier. Manual deploy after push.
 
 ---
 

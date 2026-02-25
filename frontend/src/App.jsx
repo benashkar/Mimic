@@ -4,6 +4,10 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import PromptLibraryPage from './pages/PromptLibraryPage'
+import SourceListRunPage from './pages/SourceListRunPage'
+import PipelinePage from './pages/PipelinePage'
+import StoriesPage from './pages/StoriesPage'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
@@ -36,8 +40,10 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-            <Route path="/prompts" element={<ProtectedRoute><div><h1>Prompt Library</h1><p>Coming in Phase 3.</p></div></ProtectedRoute>} />
-            <Route path="/stories" element={<ProtectedRoute><div><h1>Stories</h1><p>Coming in Phase 6.</p></div></ProtectedRoute>} />
+            <Route path="/prompts" element={<ProtectedRoute><PromptLibraryPage /></ProtectedRoute>} />
+            <Route path="/source-list" element={<ProtectedRoute><SourceListRunPage /></ProtectedRoute>} />
+            <Route path="/pipeline" element={<ProtectedRoute><PipelinePage /></ProtectedRoute>} />
+            <Route path="/stories" element={<ProtectedRoute><StoriesPage /></ProtectedRoute>} />
           </Routes>
         </main>
       </AuthProvider>

@@ -30,6 +30,9 @@ services:
       SECRET_KEY: docker-dev-secret
       FLASK_ENV: development
       FRONTEND_URL: http://localhost:3000
+      GROK_API_KEY: ${GROK_API_KEY:-}
+      GROK_API_URL: https://api.x.ai/v1/chat/completions
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     depends_on:
       db:
         condition: service_healthy

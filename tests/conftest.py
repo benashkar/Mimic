@@ -3,7 +3,7 @@ Shared pytest fixtures for Mimic tests.
 
 Uses TestConfig (SQLite in-memory) so tests run without PostgreSQL.
 Session-scoped app fixture creates tables once.
-Per-test db_session rolls back after each test for isolation.
+Per-test db_session cleans all table data after each test.
 """
 import sys
 import os
@@ -36,23 +36,24 @@ def client(app):
     return app.test_client()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(autouse=True)
 def db_session(app):
     """
-    Per-test database session with rollback.
+    Per-test database session that cleans up all data after each test.
 
-    Uses a savepoint (nested transaction) so each test's data is
-    rolled back without affecting the session-scoped table creation.
-    Compatible with Flask-SQLAlchemy 3.x.
+    Truncates all tables after each test to ensure full isolation.
+    Works reliably with SQLite (no savepoint quirks).
     """
     with app.app_context():
-        # Begin a nested transaction (savepoint)
-        _db.session.begin_nested()
-
         yield _db.session
 
-        # Rollback the savepoint after each test
-        _db.session.rollback()
+        # Remove any pending state
+        _db.session.remove()
+
+        # Delete all data from all tables (reverse order to respect FKs)
+        for table in reversed(_db.metadata.sorted_tables):
+            _db.session.execute(table.delete())
+        _db.session.commit()
 
 
 @pytest.fixture()
