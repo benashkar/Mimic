@@ -56,5 +56,38 @@ def create_app(config_class=Config):
         app.logger.info("[OK] Health check passed")
         return jsonify({"status": "ok", "service": "mimic-api"})
 
+    # One-time prompt patches (safe to re-run, no-ops if already applied)
+    with app.app_context():
+        _patch_amy_bot_twitter_exception(app)
+
     app.logger.info("[OK] Mimic API initialized")
     return app
+
+
+def _patch_amy_bot_twitter_exception(app):
+    """Strengthen X/Twitter quote exception in Amy Bot prompt."""
+    from models.prompt import Prompt
+    old_fragment = "Do NOT flag Q-UNVERIFIED for X/Twitter sources."
+    new_exception = (
+        "EXCEPTION — X/Twitter posts: If the source material is identified as coming from "
+        "X (x.com) or Twitter (twitter.com), the post content IS the verified direct quote "
+        "from the account holder. This applies unconditionally — even if the URL is a "
+        "placeholder, broken, or unresolvable. If the pitch identifies the source as a tweet "
+        "or X post, the quotes are verified. Do NOT flag Q-UNVERIFIED for any X/Twitter-sourced content."
+    )
+    prompt = Prompt.query.filter_by(prompt_type="amy-bot", is_active=True).first()
+    if not prompt:
+        return
+    if "This applies unconditionally" in prompt.prompt_text:
+        return  # Already patched
+    if old_fragment in prompt.prompt_text:
+        # Replace the old exception block
+        old_block = (
+            "EXCEPTION — X/Twitter posts: If the source is an X (x.com) or Twitter "
+            "(twitter.com) post, the text of that post IS the verified quote from the "
+            "account holder. Treat the post content as a direct, verified quote from that "
+            "person. Do NOT flag Q-UNVERIFIED for X/Twitter sources."
+        )
+        prompt.prompt_text = prompt.prompt_text.replace(old_block, new_exception)
+        db.session.commit()
+        app.logger.info("[OK] Patched Amy Bot prompt: strengthened X/Twitter exception")
