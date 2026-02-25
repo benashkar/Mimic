@@ -12,6 +12,7 @@ function SourceListRunPage() {
   const [storyId, setStoryId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [statusMsg, setStatusMsg] = useState(null)
   const pollRef = useRef(null)
 
   useEffect(() => {
@@ -26,12 +27,20 @@ function SourceListRunPage() {
   async function handleRun() {
     setLoading(true)
     setError(null)
+    setStatusMsg('Sending request...')
     try {
       const data = await apiClient('/pipeline/source-list', {
         method: 'POST',
         body: JSON.stringify({ prompt_id: parseInt(promptId, 10) }),
       })
+
+      if (!data || !data.story_id) {
+        throw new Error('Server did not return a story_id')
+      }
+
       setStoryId(data.story_id)
+      setStatusMsg('Waiting for Grok API response (this may take up to 60 seconds)...')
+
       // Start polling
       pollRef.current = setInterval(async () => {
         try {
@@ -39,21 +48,25 @@ function SourceListRunPage() {
           if (status.status === 'completed') {
             clearInterval(pollRef.current)
             setOutput(status.source_list_output)
+            setStatusMsg(null)
             setLoading(false)
           } else if (status.status === 'failed') {
             clearInterval(pollRef.current)
             const failedRun = status.runs.find(r => r.status === 'failed')
             setError(failedRun ? failedRun.error_message : 'Pipeline failed')
+            setStatusMsg(null)
             setLoading(false)
           }
         } catch (err) {
           clearInterval(pollRef.current)
           setError(err.message)
+          setStatusMsg(null)
           setLoading(false)
         }
       }, 3000)
     } catch (err) {
       setError(err.message)
+      setStatusMsg(null)
       setLoading(false)
     }
   }
@@ -81,9 +94,12 @@ function SourceListRunPage() {
       )}
 
       {!output && (
-        <button onClick={handleRun} disabled={loading} style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}>
-          {loading ? 'Running... (this may take up to 60 seconds)' : 'Run Source List'}
-        </button>
+        <div>
+          <button onClick={handleRun} disabled={loading} style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}>
+            {loading ? 'Running...' : 'Run Source List'}
+          </button>
+          {statusMsg && <p style={{ color: '#007bff', marginTop: '0.5rem' }}>{statusMsg}</p>}
+        </div>
       )}
 
       {error && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}

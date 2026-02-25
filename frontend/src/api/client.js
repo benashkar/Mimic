@@ -23,13 +23,23 @@ export async function apiClient(path, options = {}) {
     headers,
   })
 
-  const data = await resp.json().catch(() => null)
+  let data = null
+  const text = await resp.text()
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch {
+    // Response body is not valid JSON
+  }
 
   if (!resp.ok) {
-    const message = (data && data.error) || resp.statusText
+    const message = (data && data.error) || resp.statusText || `HTTP ${resp.status}`
     const err = new Error(message)
     err.status = resp.status
     throw err
+  }
+
+  if (data === null) {
+    throw new Error(`Server returned ${resp.status} with no JSON body`)
   }
 
   return data

@@ -12,6 +12,7 @@ function PipelinePage() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [statusMsg, setStatusMsg] = useState(null)
   const pollRef = useRef(null)
 
   useEffect(() => {
@@ -28,6 +29,7 @@ function PipelinePage() {
     if (!selectedPromptId || !storyId || !selectedStory) return
     setLoading(true)
     setError(null)
+    setStatusMsg('Sending request...')
     try {
       await apiClient('/pipeline/run', {
         method: 'POST',
@@ -37,6 +39,7 @@ function PipelinePage() {
           refinement_prompt_id: selectedPromptId,
         }),
       })
+      setStatusMsg('Running pipeline (this may take a few minutes)...')
       // Start polling for result
       pollRef.current = setInterval(async () => {
         try {
@@ -44,21 +47,25 @@ function PipelinePage() {
           if (status.status === 'completed') {
             clearInterval(pollRef.current)
             setResult(status)
+            setStatusMsg(null)
             setLoading(false)
           } else if (status.status === 'failed') {
             clearInterval(pollRef.current)
             const failedRun = status.runs.find(r => r.status === 'failed')
             setError(failedRun ? failedRun.error_message : 'Pipeline failed')
+            setStatusMsg(null)
             setLoading(false)
           }
         } catch (err) {
           clearInterval(pollRef.current)
           setError(err.message)
+          setStatusMsg(null)
           setLoading(false)
         }
       }, 3000)
     } catch (err) {
       setError(err.message)
+      setStatusMsg(null)
       setLoading(false)
     }
   }
@@ -103,8 +110,9 @@ function PipelinePage() {
             disabled={loading || !selectedPromptId}
             style={{ padding: '0.75rem 2rem', fontSize: '1rem', background: '#28a745', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
           >
-            {loading ? 'Running Pipeline... (this may take a few minutes)' : 'Run Pipeline'}
+            {loading ? 'Running...' : 'Run Pipeline'}
           </button>
+          {statusMsg && <p style={{ color: '#007bff', marginTop: '0.5rem' }}>{statusMsg}</p>}
         </>
       )}
 
