@@ -610,8 +610,8 @@ First user = admin. Admin promotes others via DB (admin panel later).
 ## Deployment — Free Tier → Custom Domain
 
 **Stage 1:** Render starter tier (live).
-- **Frontend:** https://mimic-frontend-dx53.onrender.com
-- **Backend API:** https://mimic-api.onrender.com
+- **Frontend:** https://tor-bot-frontend.onrender.com
+- **Backend API:** https://tor-bot-api-19yx.onrender.com
 - **Database:** PostgreSQL 16 (Render, Oregon)
 
 **Stage 2:** Custom domain — zero code changes (DNS + Render dashboard + Google OAuth + FRONTEND_URL env var).
