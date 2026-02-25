@@ -126,6 +126,7 @@ RULES & FIXES
 Q-MISATTRIB: Sharing is not saying. If Person A posts a video of Person B speaking, the quotes belong to Person B. Always check whether the named speaker actually said the words.
 Fix: Change the speaker to whoever actually said the quotes, or rewrite to only use words the named speaker said.
 Q-UNVERIFIED: Quotes must exist at the source. If quotes cannot be found at the linked URL, flag it.
+EXCEPTION — X/Twitter posts: If the source is an X (x.com) or Twitter (twitter.com) post, the text of that post IS the verified quote from the account holder. Treat the post content as a direct, verified quote from that person. Do NOT flag Q-UNVERIFIED for X/Twitter sources.
 
 2. HEADLINES
 HL-VAGUE: The headline must tell you what happened.
