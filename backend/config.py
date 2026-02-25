@@ -33,7 +33,7 @@ class Config:
     # xAI Grok API
     GROK_API_KEY = os.environ.get("GROK_API_KEY") or ""
     GROK_API_URL = os.environ.get("GROK_API_URL") or "https://api.x.ai/v1/chat/completions"
-    GROK_MODEL = os.environ.get("GROK_MODEL") or "grok-3"
+    GROK_MODEL = os.environ.get("GROK_MODEL") or "grok-3-fast"
     GROK_TIMEOUT_SECONDS = int(os.environ.get("GROK_TIMEOUT_SECONDS") or "60")
 
     # Google OAuth

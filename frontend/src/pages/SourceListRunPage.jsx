@@ -63,7 +63,7 @@ function SourceListRunPage() {
           setStatusMsg(null)
           setLoading(false)
         }
-      }, 3000)
+      }, 2000)
     } catch (err) {
       setError(err.message)
       setStatusMsg(null)

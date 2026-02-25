@@ -45,7 +45,7 @@ def call_grok(prompt_text, context=""):
     """
     api_key = current_app.config.get("GROK_API_KEY") or ""
     api_url = current_app.config.get("GROK_API_URL") or ""
-    model = current_app.config.get("GROK_MODEL") or "grok-3"
+    model = current_app.config.get("GROK_MODEL") or "grok-3-fast"
     timeout = current_app.config.get("GROK_TIMEOUT_SECONDS") or 60
 
     if not api_key:
