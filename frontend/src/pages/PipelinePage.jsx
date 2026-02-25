@@ -13,6 +13,7 @@ function PipelinePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [statusMsg, setStatusMsg] = useState(null)
+  const [sourceListOutput, setSourceListOutput] = useState(null)
   const pollRef = useRef(null)
 
   useEffect(() => {
@@ -22,6 +23,16 @@ function PipelinePage() {
         if (data.length > 0) setSelectedPromptId(data[0].id)
       })
       .catch((err) => setError(err.message))
+
+    // Fetch the full source list output for this story
+    if (storyId) {
+      apiClient(`/pipeline/status/${storyId}`)
+        .then((data) => {
+          if (data.source_list_output) setSourceListOutput(data.source_list_output)
+        })
+        .catch(() => {}) // Non-critical, selectedStory from URL is the fallback
+    }
+
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
@@ -79,9 +90,20 @@ function PipelinePage() {
       <h1>Pipeline</h1>
 
       <div style={{ background: '#f4f4f4', padding: '1rem', borderRadius: '6px', marginBottom: '1rem' }}>
-        <h3>Selected Story/Source</h3>
+        <h3>Selected Topic</h3>
         <pre style={{ whiteSpace: 'pre-wrap', overflow: 'auto', fontSize: '0.9rem', lineHeight: '1.5' }}>{selectedStory}</pre>
       </div>
+
+      {sourceListOutput && (
+        <details style={{ marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '6px', padding: '0.5rem' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 'bold', padding: '0.5rem' }}>
+            Full Source List (Grok Search Results)
+          </summary>
+          <pre style={{ whiteSpace: 'pre-wrap', overflow: 'auto', fontSize: '0.85rem', lineHeight: '1.5', padding: '1rem', background: '#fff', borderTop: '1px solid #ddd', marginTop: '0.5rem' }}>
+            {sourceListOutput}
+          </pre>
+        </details>
+      )}
 
       {!result && (
         <>
