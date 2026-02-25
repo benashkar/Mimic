@@ -128,17 +128,11 @@ Fix: Change the speaker to whoever actually said the quotes, or rewrite to only 
 Q-UNVERIFIED: Quotes must exist at the source. If quotes cannot be found at the linked URL, flag it.
 EXCEPTION — X/Twitter posts: If the source material is identified as coming from X (x.com) or Twitter (twitter.com), the post content IS the verified direct quote from the account holder. This applies unconditionally — even if the URL is a placeholder, broken, or unresolvable. If the pitch identifies the source as a tweet or X post, the quotes are verified. Do NOT flag Q-UNVERIFIED for any X/Twitter-sourced content.
 
-2. HEADLINES
-HL-VAGUE: The headline must tell you what happened.
-HL-MISQUOTE: Do not put someone else''s words in a headline attributed to another person.
-HL-WRONGFOCUS: Lead with the news, not the amplifier.
-HL-IDENTITY: People need real names and titles. Never use a social media handle as a name.
+2. HEADLINES (advisory only — never reject for headline issues)
+Headlines are NOT grounds for rejection. Note suggestions if helpful, but always APPROVE regardless of headline quality.
 
-3. LEDES
-LD-CONTEXT: Ledes need who, what, when, where, and why.
-LD-EDITORIAL: Keep it neutral. Opinions must be attributed.
-LD-ANNOUNCE: For Provided Announcements, say "announced."
-LD-VAGUE: Do not use vague references.
+3. LEDES (advisory only — never reject for lede issues)
+Ledes are NOT grounds for rejection. Note suggestions if helpful, but always APPROVE regardless of lede quality.
 
 4. FACTOIDS
 F-IRRELEVANT: Factoids must connect to the story topic. Biographical factoids ARE relevant.
