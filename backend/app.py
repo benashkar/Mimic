@@ -67,7 +67,10 @@ def create_app(config_class=Config):
 def _patch_amy_bot_prompt(app):
     """Apply accumulated Amy Bot prompt patches."""
     from models.prompt import Prompt
-    prompt = Prompt.query.filter_by(prompt_type="amy-bot", is_active=True).first()
+    try:
+        prompt = Prompt.query.filter_by(prompt_type="amy-bot", is_active=True).first()
+    except Exception:
+        return  # Table doesn't exist yet (test env before create_all)
     if not prompt:
         return
 

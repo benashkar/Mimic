@@ -20,7 +20,7 @@ from models.user import User
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_DOMAINS = ["plmediaagency.com", "locallabs.com"]
+ALLOWED_DOMAINS = ["plmediaagency.com", "locallabs.com", "projectroseland.com"]
 ALLOWED_EMAILS = ["btimpone@gmail.com", "cashkar@gmail.com"]
 
 

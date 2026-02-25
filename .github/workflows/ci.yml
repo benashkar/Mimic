@@ -22,10 +22,17 @@ jobs:
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install -r backend/requirements.txt
-          python3 -m pip install pytest
+          python3 -m pip install pytest pytest-cov ruff
 
-      - name: Run tests
-        run: python3 -m pytest tests/ -v
+      - name: Lint backend with ruff
+        run: ruff check backend/ --select E,F,W --ignore E501
+
+      - name: Run tests with coverage
+        run: |
+          python3 -m pytest tests/ -v \
+            --cov=backend \
+            --cov-report=term-missing \
+            --cov-fail-under=70
 
   frontend-build:
     runs-on: ubuntu-latest
