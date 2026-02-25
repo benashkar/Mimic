@@ -80,7 +80,7 @@ function PipelinePage() {
 
       <div style={{ background: '#f4f4f4', padding: '1rem', borderRadius: '6px', marginBottom: '1rem' }}>
         <h3>Selected Story/Source</h3>
-        <pre style={{ whiteSpace: 'pre-wrap', maxHeight: '200px', overflow: 'auto' }}>{selectedStory}</pre>
+        <pre style={{ whiteSpace: 'pre-wrap', overflow: 'auto', fontSize: '0.9rem', lineHeight: '1.5' }}>{selectedStory}</pre>
       </div>
 
       {!result && (
