@@ -3,45 +3,81 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 
 /**
- * Parse source list output into topic sections.
- * Splits on "### Topic N: Title" headers (Grok output format).
- * Falls back to splitting on numbered items ("1. **Title**").
- * Returns array of { title, body } objects.
+ * Parse Grok source list output into individual posts grouped by topic.
+ *
+ * Grok returns topics as ### or #### headers, each containing numbered
+ * posts with Author, Post, Link, Engagement fields. We extract every
+ * individual post so the user can run pipeline on each one separately.
+ *
+ * Returns: { topics: [{ title, posts: [{ author, content, body }] }] }
  */
-function parseTopics(text) {
+function parseSources(text) {
   if (!text) return []
 
-  // Try splitting on ### Topic headers first (Grok's default format)
-  const topicHeaderPattern = /\n(?=###\s+Topic\s+\d+)/
-  if (/###\s+Topic\s+\d+/.test(text)) {
-    const parts = text.split(topicHeaderPattern)
-    const topics = []
-    for (const part of parts) {
-      const trimmed = part.trim()
-      if (!trimmed) continue
-      const match = trimmed.match(/^###\s+Topic\s+(\d+):\s*(.+?)\s*\n([\s\S]*)$/)
-      if (match) {
-        const title = `Topic ${match[1]}: ${match[2]}`
-        // Strip leading --- separators from body
-        const body = match[3].replace(/^---\s*\n?/, '').trim()
-        topics.push({ title, body })
+  // Split into topic sections — match ### or #### followed by number or "Topic"
+  const topicPattern = /\n(?=#{3,4}\s+(?:Topic\s+)?\d)/
+  const hasTopics = /#{3,4}\s+(?:Topic\s+)?\d/.test(text)
+  if (!hasTopics) return []
+
+  const sections = text.split(topicPattern)
+  const topics = []
+
+  for (const section of sections) {
+    const trimmed = section.trim()
+    if (!trimmed) continue
+
+    // Extract topic title from ### or #### header
+    const headerMatch = trimmed.match(/^#{3,4}\s+(?:Topic\s+)?(\d+)[.:]\s*(.+?)\s*\n([\s\S]*)$/)
+    if (!headerMatch) continue
+
+    const topicTitle = headerMatch[2].replace(/^\*+|\*+$/g, '').trim()
+    const topicBody = headerMatch[3]
+
+    // Extract individual posts within this topic
+    // Format A: "1. **Author**: Name (@handle)...\n**Post**: ...\n**Link**: ...\n**Engagement**: ..."
+    // Format B: "- **Post 1**: Author (@handle)...\n\"content\"...\n[Link](...)"
+    const posts = []
+
+    // Split on numbered posts: "N. **Author**:" or "- **Post N**:"
+    const postParts = topicBody.split(/\n(?=\d+\.\s+\*\*Author\*\*:|(?:- )?\*\*Post\s+\d+\*\*:)/)
+
+    for (const part of postParts) {
+      const postTrimmed = part.trim()
+      if (!postTrimmed) continue
+
+      // Try Format A: "1. **Author**: Name (@handle)..."
+      const fmtA = postTrimmed.match(/^\d+\.\s+\*\*Author\*\*:\s*(.+?)(?:\n|$)([\s\S]*)$/)
+      if (fmtA) {
+        const author = fmtA[1].trim()
+        const rest = fmtA[2]
+        // Extract post content
+        const postMatch = rest.match(/\*\*Post\*\*:\s*["""]?([\s\S]*?)["""]?\s*(?:\*\*Link\*\*:|$)/)
+        const postContent = postMatch ? postMatch[1].trim() : ''
+        posts.push({ author, content: postContent, body: postTrimmed })
+        continue
+      }
+
+      // Try Format B: "- **Post 1**: Author (@handle)..."
+      const fmtB = postTrimmed.match(/^(?:- )?\*\*Post\s+\d+\*\*:\s*(.+?)(?:\n|$)([\s\S]*)$/)
+      if (fmtB) {
+        const author = fmtB[1].trim()
+        const rest = fmtB[2]
+        // Content is usually in quotes on next lines
+        const contentMatch = rest.match(/["""](.+?)["""]/s)
+        const postContent = contentMatch ? contentMatch[1].trim() : rest.split('\n')[0].trim()
+        posts.push({ author, content: postContent, body: postTrimmed })
+        continue
       }
     }
-    if (topics.length > 0) return topics
+
+    // If we couldn't parse individual posts, treat entire topic as one item
+    if (posts.length === 0) {
+      posts.push({ author: '', content: '', body: topicBody.trim() })
+    }
+
+    topics.push({ title: `${headerMatch[1]}. ${topicTitle}`, posts })
   }
 
-  // Fallback: split on numbered items (e.g. "1. **Title**")
-  const parts = text.split(/\n(?=\d+\.\s)/)
-  const topics = []
-  for (const part of parts) {
-    const trimmed = part.trim()
-    if (!trimmed) continue
-    const match = trimmed.match(/^(\d+)\.\s+\*{0,2}(.+?)\*{0,2}\s*\n?([\s\S]*)$/)
-    if (match) {
-      const title = match[2].replace(/^\*+|\*+$/g, '').trim()
-      topics.push({ title: `${match[1]}. ${title}`, body: trimmed })
-    }
-  }
   return topics
 }
 
@@ -122,7 +158,7 @@ function SourceListRunPage() {
     return <p>No prompt_id provided. Go to <a href="/prompts">Prompt Library</a> and run a Source List.</p>
   }
 
-  const topics = parseTopics(output)
+  const topics = parseSources(output)
 
   return (
     <div>
@@ -156,39 +192,57 @@ function SourceListRunPage() {
         <div style={{ marginTop: '1rem' }}>
           <h2>Results</h2>
           <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '1rem' }}>
-            Choose a topic and click "Run Pipeline" to proceed.
+            Each source below can be sent to the pipeline individually.
           </p>
 
           {topics.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              {topics.map((topic, i) => (
-                <div
-                  key={i}
-                  style={{
-                    padding: '1rem',
-                    borderRadius: '6px',
-                    border: '1px solid #ddd',
-                    background: '#f9f9f9',
-                  }}
-                >
-                  <strong style={{ fontSize: '1.1rem' }}>{topic.title}</strong>
-                  <pre style={{ whiteSpace: 'pre-wrap', margin: '0.75rem 0', fontSize: '0.85rem', color: '#444' }}>
-                    {topic.body}
-                  </pre>
-                  <button
-                    onClick={() => handleRunPipeline(topic.body)}
-                    style={{
-                      padding: '0.5rem 1.5rem',
-                      fontSize: '0.95rem',
-                      background: '#007bff',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Run Pipeline
-                  </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              {topics.map((topic, ti) => (
+                <div key={ti}>
+                  <h3 style={{ borderBottom: '2px solid #007bff', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
+                    {topic.title}
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingLeft: '0.5rem' }}>
+                    {topic.posts.map((post, pi) => (
+                      <div
+                        key={pi}
+                        style={{
+                          padding: '1rem',
+                          borderRadius: '6px',
+                          border: '1px solid #ddd',
+                          background: '#f9f9f9',
+                        }}
+                      >
+                        {post.author && (
+                          <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '0.5rem' }}>
+                            {post.author}
+                          </div>
+                        )}
+                        {post.content && (
+                          <div style={{ fontSize: '0.9rem', color: '#333', marginBottom: '0.5rem', fontStyle: 'italic' }}>
+                            "{post.content}"
+                          </div>
+                        )}
+                        <pre style={{ whiteSpace: 'pre-wrap', margin: '0.5rem 0', fontSize: '0.8rem', color: '#555' }}>
+                          {post.body}
+                        </pre>
+                        <button
+                          onClick={() => handleRunPipeline(post.body)}
+                          style={{
+                            padding: '0.4rem 1.25rem',
+                            fontSize: '0.9rem',
+                            background: '#007bff',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Run Pipeline
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
