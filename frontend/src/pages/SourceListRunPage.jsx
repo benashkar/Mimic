@@ -5,74 +5,67 @@ import { apiClient } from '../api/client'
 /**
  * Parse Grok source list output into individual posts grouped by topic.
  *
- * Grok returns topics as ### or #### headers, each containing numbered
- * posts with Author, Post, Link, Engagement fields. We extract every
- * individual post so the user can run pipeline on each one separately.
+ * Grok output formats vary but always have:
+ *   - Topic headers: ### or #### with a number and title
+ *   - Individual posts: numbered items (possibly indented) containing
+ *     **Author** or **Post** fields with content, links, engagement
  *
- * Returns: { topics: [{ title, posts: [{ author, content, body }] }] }
+ * Returns array of { title, posts: [{ author, content, body }] }
  */
 function parseSources(text) {
   if (!text) return []
 
-  // Split into topic sections — match ### or #### followed by number or "Topic"
-  const topicPattern = /\n(?=#{3,4}\s+(?:Topic\s+)?\d)/
+  // Split into topic sections on ### or #### headers with numbers
   const hasTopics = /#{3,4}\s+(?:Topic\s+)?\d/.test(text)
   if (!hasTopics) return []
 
-  const sections = text.split(topicPattern)
+  const sections = text.split(/\n(?=#{3,4}\s+(?:Topic\s+)?\d)/)
   const topics = []
 
   for (const section of sections) {
     const trimmed = section.trim()
     if (!trimmed) continue
 
-    // Extract topic title from ### or #### header
     const headerMatch = trimmed.match(/^#{3,4}\s+(?:Topic\s+)?(\d+)[.:]\s*(.+?)\s*\n([\s\S]*)$/)
     if (!headerMatch) continue
 
     const topicTitle = headerMatch[2].replace(/^\*+|\*+$/g, '').trim()
     const topicBody = headerMatch[3]
 
-    // Extract individual posts within this topic
-    // Format A: "1. **Author**: Name (@handle)...\n**Post**: ...\n**Link**: ...\n**Engagement**: ..."
-    // Format B: "- **Post 1**: Author (@handle)...\n\"content\"...\n[Link](...)"
+    // Extract individual posts — split on numbered items that contain **Author** or **Post**
+    // Handles: "  1. **Author**:", "1. **Author**:", "- **Post 1**:", etc.
     const posts = []
-
-    // Split on numbered posts: "N. **Author**:" or "- **Post N**:"
-    const postParts = topicBody.split(/\n(?=\d+\.\s+\*\*Author\*\*:|(?:- )?\*\*Post\s+\d+\*\*:)/)
+    const postParts = topicBody.split(/\n(?=\s*\d+\.\s+\*\*)/)
 
     for (const part of postParts) {
-      const postTrimmed = part.trim()
-      if (!postTrimmed) continue
+      const p = part.trim()
+      if (!p) continue
 
-      // Try Format A: "1. **Author**: Name (@handle)..."
-      const fmtA = postTrimmed.match(/^\d+\.\s+\*\*Author\*\*:\s*(.+?)(?:\n|$)([\s\S]*)$/)
-      if (fmtA) {
-        const author = fmtA[1].trim()
-        const rest = fmtA[2]
-        // Extract post content
-        const postMatch = rest.match(/\*\*Post\*\*:\s*["""]?([\s\S]*?)["""]?\s*(?:\*\*Link\*\*:|$)/)
-        const postContent = postMatch ? postMatch[1].trim() : ''
-        posts.push({ author, content: postContent, body: postTrimmed })
-        continue
+      // Must start with a numbered item containing bold text
+      if (!/^\d+\.\s+\*\*/.test(p)) continue
+
+      // Extract author — look for **Author**: value or **Post N**: Author value
+      let author = ''
+      let content = ''
+
+      // Format: "1. **Author**: Name (@handle)..."
+      const authorMatch = p.match(/\*\*Author\*\*:\s*(.+?)(?:\n|$)/)
+      if (authorMatch) {
+        author = authorMatch[1].trim()
       }
 
-      // Try Format B: "- **Post 1**: Author (@handle)..."
-      const fmtB = postTrimmed.match(/^(?:- )?\*\*Post\s+\d+\*\*:\s*(.+?)(?:\n|$)([\s\S]*)$/)
-      if (fmtB) {
-        const author = fmtB[1].trim()
-        const rest = fmtB[2]
-        // Content is usually in quotes on next lines
-        const contentMatch = rest.match(/["""](.+?)["""]/s)
-        const postContent = contentMatch ? contentMatch[1].trim() : rest.split('\n')[0].trim()
-        posts.push({ author, content: postContent, body: postTrimmed })
-        continue
+      // Format: "**Post Content**: "text"" or "**Post**: "text""
+      const contentMatch = p.match(/\*\*Post(?:\s+Content)?\*\*:\s*["""]?([\s\S]*?)["""]?\s*(?:\*\*Link\*\*:|\*\*Engagement\*\*:|$)/)
+      if (contentMatch) {
+        content = contentMatch[1].replace(/["""]/g, '').trim()
       }
+
+      posts.push({ author, content, body: p })
     }
 
     // If we couldn't parse individual posts, treat entire topic as one item
     if (posts.length === 0) {
-      posts.push({ author: '', content: '', body: topicBody.trim() })
+      posts.push({ author: '', content: '', body: topicBody.replace(/^---\s*\n?/, '').trim() })
     }
 
     topics.push({ title: `${headerMatch[1]}. ${topicTitle}`, posts })
