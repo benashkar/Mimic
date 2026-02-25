@@ -21,6 +21,7 @@ from models.user import User
 logger = logging.getLogger(__name__)
 
 ALLOWED_DOMAINS = ["plmediaagency.com", "locallabs.com"]
+ALLOWED_EMAILS = ["btimpone@gmail.com"]
 
 
 def verify_google_token(id_token_str):
@@ -63,9 +64,10 @@ def get_or_create_user(google_claims):
     """
     email = google_claims["email"]
 
-    # Domain check — .lower() both sides per global rules
-    domain = email.split("@")[-1].lower()
-    if domain not in [d.lower() for d in ALLOWED_DOMAINS]:
+    # Allow specific emails or allowed domains — .lower() both sides
+    email_lower = email.lower()
+    domain = email_lower.split("@")[-1]
+    if email_lower not in [e.lower() for e in ALLOWED_EMAILS] and domain not in [d.lower() for d in ALLOWED_DOMAINS]:
         logger.error("[ERR] Invalid domain: %s", email)
         raise ValueError(f"Email domain @{domain} is not allowed")
 
