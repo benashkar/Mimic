@@ -1,0 +1,36 @@
+# Mimic Frontend — React build + Nginx serve
+# Stage 1: Build the React app
+# Stage 2: Serve with Nginx
+
+# --- Build stage ---
+FROM node:24-slim AS build
+
+WORKDIR /app
+
+# Install dependencies first (cache-friendly layer)
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install
+
+# Copy frontend source and build
+COPY frontend/ .
+RUN npm run build
+
+# --- Serve stage ---
+FROM nginx:alpine
+
+# Copy built assets to Nginx html directory
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Nginx config for SPA routing (all routes → index.html)
+RUN echo 'server { \
+    listen 80; \
+    location / { \
+        root /usr/share/nginx/html; \
+        try_files $uri $uri/ /index.html; \
+    } \
+    location /api { \
+        proxy_pass http://backend:5000; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
