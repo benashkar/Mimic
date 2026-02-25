@@ -663,7 +663,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 - [ ] **Lumen API docs** — Stubbed until Ben provides.
 - [ ] **xAI API key** — Ben to provide.
-- [ ] **Google OAuth credentials** — Ben to create Google Cloud project. (Code ready, drop GOOGLE_CLIENT_ID into env vars)
+- [x] **Google OAuth credentials** — `GOOGLE_CLIENT_ID=566489188596-39d3mcom52frj7jvu62tlkl82ehacqv3.apps.googleusercontent.com` (set on both Render services)
 - [ ] **Custom domain** — When ready to migrate off Render free tier.
 - [x] **Source List prompts** — 34 configs from Lead Pitcher spreadsheet.
 - [x] **PAPA prompt** — Full text captured (~4,800 chars).
