@@ -423,7 +423,7 @@ cr-news-pipeline/
 
 ## Implementation Phases
 
-### Phase 1: Project Scaffolding & Database
+### Phase 1: Project Scaffolding & Database ✅
 1. Init repo. Project-specific `CLAUDE.md`.
 2. Flask factory + CORS. `config.py`.
 3. SQLAlchemy models (4 tables).
@@ -432,17 +432,19 @@ cr-news-pipeline/
 6. React + Vite + Router (placeholders).
 7. `docker-compose.yml`.
 
-**Tests:** health check, DB read/write.
+**Tests:** health check, DB read/write. (9 tests passing)
 
 ---
 
-### Phase 1.5: Authentication + Roles
+### Phase 1.5: Authentication + Roles ✅
 1. `auth_service.py`: Google token → check `@plmediaagency.com` → role.
 2. `routes/auth.py`: login, me (returns role), logout.
 3. `@login_required`, `@admin_required` decorators.
-4. Frontend: LoginPage, ProtectedRoute, AuthContext, AdminOnly.
+4. Frontend: LoginPage, ProtectedRoute, AuthContext, AdminOnly, GoogleLoginBtn.
+5. JWT session tokens (PyJWT), Google OAuth token verification (google-auth).
+6. First user = admin, subsequent users = user role.
 
-**Tests:** valid/wrong domain, admin/user role enforcement.
+**Tests:** valid/wrong domain, admin/user role enforcement, JWT roundtrip, decorator auth. (~15 new tests)
 
 ---
 
@@ -657,7 +659,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 - [ ] **Lumen API docs** — Stubbed until Ben provides.
 - [ ] **xAI API key** — Ben to provide.
-- [ ] **Google OAuth credentials** — Ben to create Google Cloud project.
+- [ ] **Google OAuth credentials** — Ben to create Google Cloud project. (Code ready, drop GOOGLE_CLIENT_ID into env vars)
 - [ ] **Custom domain** — When ready to migrate off Render free tier.
 - [x] **Source List prompts** — 34 configs from Lead Pitcher spreadsheet.
 - [x] **PAPA prompt** — Full text captured (~4,800 chars).

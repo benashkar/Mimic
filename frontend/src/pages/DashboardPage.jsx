@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
 
 function DashboardPage() {
+  const { user } = useAuth()
   const [health, setHealth] = useState(null)
   const [error, setError] = useState(null)
 
@@ -14,6 +16,11 @@ function DashboardPage() {
   return (
     <div>
       <h1>Mimic Dashboard</h1>
+      {user && (
+        <p style={{ color: '#555' }}>
+          Logged in as <strong>{user.display_name || user.email}</strong> ({user.role})
+        </p>
+      )}
       <h2>API Health Check</h2>
       {error && <p style={{ color: 'red' }}>Error: {error}</p>}
       {health ? (

@@ -30,6 +30,12 @@ class Config:
         "pool_recycle": 300,    # Recycle connections every 5 minutes
     }
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID") or ""
+
+    # JWT settings
+    JWT_EXPIRY_HOURS = int(os.environ.get("JWT_EXPIRY_HOURS") or "24")
+
     # CORS — frontend URL for allowed origins
     FRONTEND_URL = os.environ.get("FRONTEND_URL") or "http://localhost:5173"
 
@@ -40,3 +46,4 @@ class TestConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     SQLALCHEMY_ENGINE_OPTIONS = {}  # No pool settings needed for SQLite
+    GOOGLE_CLIENT_ID = "test-client-id"

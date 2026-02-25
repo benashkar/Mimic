@@ -1,23 +1,20 @@
 """
 Route registration for the Flask app.
 
-Phase 1: No blueprints yet — just a placeholder.
-Future phases will add:
+Registers all route blueprints:
   - auth routes (Google OAuth login/logout/me)
-  - prompt routes (CRUD for Prompt Library)
-  - pipeline routes (Source List runner, pipeline execution)
-  - story routes (browse pipeline results)
+  - prompt routes (CRUD for Prompt Library — Phase 3)
+  - pipeline routes (Source List runner — Phase 4)
+  - story routes (browse pipeline results — Phase 6)
 """
+from routes.auth import auth_bp
 
 
 def register_routes(app):
     """
     Register all route blueprints with the Flask app.
 
-    Currently a placeholder. Blueprints will be added in later phases
-    as each feature is implemented.
-
     Args:
         app: Flask application instance.
     """
-    pass
+    app.register_blueprint(auth_bp, url_prefix="/api/auth")
