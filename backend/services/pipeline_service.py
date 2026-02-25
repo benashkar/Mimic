@@ -146,14 +146,22 @@ def _run_grok_step(story, prompt, step_type, input_text):
     Raises:
         GrokAPIError: If the API call fails (logged and re-raised).
     """
-    run = PipelineRun(
-        story_id=story.id,
-        prompt_id=prompt.id,
-        step_type=step_type,
-        status="running",
-        input_text=input_text,
-    )
-    db.session.add(run)
+    # Reuse existing placeholder run if one exists (created by route for status tracking)
+    run = PipelineRun.query.filter_by(
+        story_id=story.id, step_type=step_type, status="running"
+    ).first()
+    if run:
+        run.prompt_id = prompt.id
+        run.input_text = input_text
+    else:
+        run = PipelineRun(
+            story_id=story.id,
+            prompt_id=prompt.id,
+            step_type=step_type,
+            status="running",
+            input_text=input_text,
+        )
+        db.session.add(run)
     db.session.flush()
 
     start_ms = int(time.time() * 1000)

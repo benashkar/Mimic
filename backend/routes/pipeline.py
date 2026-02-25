@@ -174,6 +174,18 @@ def run_full_pipeline():
     if not story:
         return jsonify({"error": "Story not found"}), 404
 
+    # Create a placeholder "running" refinement run so the status endpoint
+    # knows the pipeline is in progress before the background thread starts
+    placeholder_run = PipelineRun(
+        story_id=story_id,
+        prompt_id=refinement_prompt_id,
+        step_type="refinement",
+        status="running",
+        input_text="(pipeline starting...)",
+    )
+    db.session.add(placeholder_run)
+    db.session.commit()
+
     # Launch background thread
     app = current_app._get_current_object()
     thread = threading.Thread(
