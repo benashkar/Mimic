@@ -2,16 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 
-/**
- * Parse Grok source list output into individual sources.
- *
- * Handles multiple Grok output formats:
- *   A) **List A/B** headers with URLs on separate lines
- *   B) ### / #### topic headers with numbered posts containing **Author**/**Post**
- *   C) Fallback: split on any line that looks like a standalone URL or numbered item
- *
- * Returns flat array of { label, body } — one entry per individual source.
- */
+// Parse Grok source list output into individual sources.
+// Handles: List A/B with URLs, topic headers with numbered posts, fallback blocks.
+// Returns flat array of { label, body } -- one entry per individual source.
 function parseSources(text) {
   if (!text) return []
 
