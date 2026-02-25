@@ -36,8 +36,15 @@ class TestGetOrCreateUser:
             assert user.email == "alice@plmediaagency.com"
             assert user.google_id == "google-abc-123"
 
+    def test_locallabs_domain_creates_user(self, app, db_session):
+        """locallabs.com email creates a user successfully."""
+        with app.app_context():
+            ll_claims = {**VALID_CLAIMS, "sub": "google-ll-789", "email": "carol@locallabs.com"}
+            user = get_or_create_user(ll_claims)
+            assert user.email == "carol@locallabs.com"
+
     def test_wrong_domain_raises(self, app, db_session):
-        """Non-plmediaagency.com email raises ValueError."""
+        """Non-allowed domain raises ValueError."""
         bad_claims = {**VALID_CLAIMS, "email": "bob@gmail.com"}
         with app.app_context():
             with pytest.raises(ValueError, match="not allowed"):

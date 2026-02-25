@@ -3,7 +3,7 @@ Auth service — Google token verification, user management, JWT.
 
 Handles the full login flow:
   1. Verify Google ID token
-  2. Domain check (@plmediaagency.com only)
+  2. Domain check (@plmediaagency.com and @locallabs.com)
   3. Create or fetch user (first user = admin)
   4. Issue/decode JWT session tokens
 """
@@ -20,7 +20,7 @@ from models.user import User
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_DOMAIN = "plmediaagency.com"
+ALLOWED_DOMAINS = ["plmediaagency.com", "locallabs.com"]
 
 
 def verify_google_token(id_token_str):
@@ -49,7 +49,7 @@ def get_or_create_user(google_claims):
     """
     Find existing user by google_id or create a new one.
 
-    Domain check: only @plmediaagency.com emails allowed.
+    Domain check: only @plmediaagency.com and @locallabs.com emails allowed.
     First user in the database automatically gets admin role.
 
     Args:
@@ -65,7 +65,7 @@ def get_or_create_user(google_claims):
 
     # Domain check — .lower() both sides per global rules
     domain = email.split("@")[-1].lower()
-    if domain != ALLOWED_DOMAIN.lower():
+    if domain not in [d.lower() for d in ALLOWED_DOMAINS]:
         logger.error("[ERR] Invalid domain: %s", email)
         raise ValueError(f"Email domain @{domain} is not allowed")
 
