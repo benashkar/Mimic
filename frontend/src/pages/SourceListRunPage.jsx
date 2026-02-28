@@ -98,6 +98,25 @@ function findEnrichment(body, enrichments) {
   return enrichments[url] || null
 }
 
+// Render text with URLs converted to clickable links.
+function LinkifiedText({ text }) {
+  if (!text) return null
+  const parts = text.split(/(https?:\/\/[^\s<>"']+)/g)
+  return parts.map((part, i) => {
+    if (/^https?:\/\//.test(part)) {
+      const clean = part.replace(/[.,;:!?)>\]})]+$/, '')
+      const trailing = part.slice(clean.length)
+      return (
+        <span key={i}>
+          <a href={clean} target="_blank" rel="noopener noreferrer" style={{ color: '#1da1f2' }}>{clean}</a>
+          {trailing}
+        </span>
+      )
+    }
+    return <span key={i}>{part}</span>
+  })
+}
+
 function SourceListRunPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -289,9 +308,7 @@ function SourceListRunPage() {
 
                     {!enrichment && (
                       <pre style={{ whiteSpace: 'pre-wrap', margin: '0.5rem 0', fontSize: '0.8rem', color: '#555', maxHeight: '150px', overflow: 'auto' }}>
-                        {/^https?:\/\/\S+$/.test(source.body.trim())
-                          ? <a href={source.body.trim()} target="_blank" rel="noopener noreferrer">{source.body.trim()}</a>
-                          : source.body}
+                        <LinkifiedText text={source.body} />
                       </pre>
                     )}
 

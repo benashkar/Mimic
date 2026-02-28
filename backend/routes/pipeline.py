@@ -105,12 +105,18 @@ def run_source_list():
         context_parts.append(f"Topic: {prompt.topic_summary}")
     if prompt.context:
         context_parts.append(f"Context: {prompt.context}")
-    # Enforce real links and dates — Grok has live X access
+    # Inject today's date so Grok knows what "last 24-48 hours" means
+    today = datetime.now(timezone.utc).strftime("%B %d, %Y")
+    context_parts.append(f"Today's date is {today}.")
+    # Enforce real links, dates, and recency
     context_parts.append(
-        "IMPORTANT: For every X/Twitter post, you MUST include the real, "
+        "CRITICAL: For every X/Twitter post, you MUST include the real, "
         "actual direct URL to the tweet (e.g. https://x.com/username/status/123456). "
         "Never use placeholders like '(Placeholder for actual X post link)'. "
-        "Also include the date each post was published."
+        "Include the date each post was published. "
+        "Only include posts from the timeframe specified in the prompt — "
+        "if the prompt says 'last 24-48 hours' or 'last 7 days', do NOT "
+        "include older posts. Use today's date above to calculate recency."
     )
     context_str = "\n".join(context_parts)
 
