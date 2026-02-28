@@ -79,6 +79,20 @@ def get_or_create_user(google_claims):
         logger.info("[OK] User logged in: %s", email)
         return user
 
+    # Check for pre-invited user (created via admin invite, no google_id yet)
+    invited = User.query.filter(
+        db.func.lower(User.email) == email_lower,
+        User.google_id.is_(None),
+    ).first()
+    if invited:
+        invited.google_id = google_claims["sub"]
+        invited.display_name = google_claims.get("name") or ""
+        invited.avatar_url = google_claims.get("picture") or ""
+        invited.last_login_at = datetime.now(timezone.utc)
+        db.session.commit()
+        logger.info("[OK] Pre-invited user claimed: %s (role=%s)", email, invited.role)
+        return invited
+
     # First user in the system becomes admin
     is_first_user = User.query.count() == 0
     role = "admin" if is_first_user else "user"

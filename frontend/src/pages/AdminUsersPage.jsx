@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
 import { apiClient } from '../api/client'
 
 function AdminUsersPage() {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState([])
   const [agencies, setAgencies] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [editingUser, setEditingUser] = useState(null)
+  const [showInvite, setShowInvite] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -29,12 +32,32 @@ function AdminUsersPage() {
     }
   }
 
+  async function handleRoleChange(userId, newRole) {
+    try {
+      await apiClient(`/admin/users/${userId}/role`, {
+        method: 'PUT',
+        body: JSON.stringify({ role: newRole }),
+      })
+      loadData()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   if (loading) return <p>Loading...</p>
   if (error) return <p style={{ color: 'red' }}>Error: {error}</p>
 
   return (
     <div>
-      <h1>User Management</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h1 style={{ margin: 0 }}>User Management</h1>
+        <button
+          onClick={() => setShowInvite(true)}
+          style={{ background: '#007bff', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.9rem' }}
+        >
+          + Invite User
+        </button>
+      </div>
       <p style={{ color: '#666', marginBottom: '1rem' }}>
         Assign agencies and opportunities to control which prompts each user can see.
         Admins always see everything.
@@ -54,17 +77,50 @@ function AdminUsersPage() {
               <div>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                   <strong>{u.display_name || u.email}</strong>
-                  <span style={{
-                    display: 'inline-block',
-                    padding: '0.1rem 0.4rem',
-                    borderRadius: '3px',
-                    fontSize: '0.75rem',
-                    fontWeight: 'bold',
-                    color: '#fff',
-                    background: u.role === 'admin' ? '#dc3545' : '#6c757d',
-                  }}>
-                    {u.role}
-                  </span>
+                  {!u.google_id && (
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '3px',
+                      fontSize: '0.7rem',
+                      fontWeight: 'bold',
+                      color: '#856404',
+                      background: '#fff3cd',
+                    }}>
+                      INVITED
+                    </span>
+                  )}
+                  {currentUser && currentUser.id !== u.id ? (
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                      style={{
+                        padding: '0.1rem 0.3rem',
+                        borderRadius: '3px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        color: '#fff',
+                        background: u.role === 'admin' ? '#dc3545' : '#6c757d',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="user">user</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  ) : (
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '3px',
+                      fontSize: '0.75rem',
+                      fontWeight: 'bold',
+                      color: '#fff',
+                      background: u.role === 'admin' ? '#dc3545' : '#6c757d',
+                    }}>
+                      {u.role} (you)
+                    </span>
+                  )}
                 </div>
                 <p style={{ margin: '0.25rem 0', fontSize: '0.85rem', color: '#666' }}>{u.email}</p>
                 {u.agencies && u.agencies.length > 0 ? (
@@ -92,14 +148,12 @@ function AdminUsersPage() {
                   </p>
                 )}
               </div>
-              {u.role !== 'admin' && (
-                <button
-                  onClick={() => setEditingUser(u)}
-                  style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}
-                >
-                  Edit Access
-                </button>
-              )}
+              <button
+                onClick={() => setEditingUser(u)}
+                style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}
+              >
+                Edit Access
+              </button>
             </div>
           </div>
         ))}
@@ -124,6 +178,100 @@ function AdminUsersPage() {
           onCancel={() => setEditingUser(null)}
         />
       )}
+
+      {showInvite && (
+        <InviteModal
+          onInvite={async (email, role) => {
+            await apiClient('/admin/users/invite', {
+              method: 'POST',
+              body: JSON.stringify({ email, role }),
+            })
+            setShowInvite(false)
+            loadData()
+          }}
+          onCancel={() => setShowInvite(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function InviteModal({ onInvite, onCancel }) {
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState('user')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await onInvite(email.trim(), role)
+    } catch (err) {
+      setError(err.message)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#fff',
+        borderRadius: '8px',
+        padding: '1.5rem',
+        width: '400px',
+      }}>
+        <h3>Invite User</h3>
+        <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Pre-create a user account. When they log in via Google, they will get the role and agencies you assign.
+        </p>
+
+        {error && <p style={{ color: 'red', fontSize: '0.85rem' }}>{error}</p>}
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="user@example.com"
+              style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Role</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              style={{ width: '100%', padding: '0.4rem' }}
+            >
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <button type="button" onClick={onCancel}>Cancel</button>
+            <button
+              type="submit"
+              disabled={saving}
+              style={{ background: '#007bff', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.4rem 1rem', cursor: 'pointer' }}
+            >
+              {saving ? 'Inviting...' : 'Invite'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
