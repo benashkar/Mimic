@@ -2,8 +2,9 @@
 Tests for routes/pipeline.py — Source List, Pipeline Run, and Status endpoints.
 
 Covers: async background execution, placeholder run creation, status polling,
-input validation, error handling in background threads.
+input validation, error handling in background threads, URL enrichment.
 """
+import json
 from unittest.mock import patch, MagicMock
 
 from models import db
@@ -266,3 +267,84 @@ class TestStatusEndpoint:
         assert runs[0]["step_type"] == "source-list"
         assert runs[1]["step_type"] == "refinement"
         assert runs[2]["step_type"] == "amy-bot"
+
+    def test_status_includes_url_enrichments(self, client, auth_headers, db_session):
+        """Status response includes url_enrichments when present."""
+        headers = auth_headers(role="user")
+        enrichment_data = json.dumps({"https://x.com/u/status/1": {"type": "twitter", "text": "hi"}})
+        story = Story(created_by="test", url_enrichments=enrichment_data)
+        db_session.add(story)
+        db_session.flush()
+
+        run = PipelineRun(story_id=story.id, step_type="source-list", status="completed")
+        db_session.add(run)
+        db_session.flush()
+
+        resp = client.get(f"/api/pipeline/status/{story.id}", headers=headers)
+        data = resp.get_json()
+        assert data["url_enrichments"] == enrichment_data
+
+
+class TestSourceListEnrichment:
+    """Tests for URL enrichment in the source list background thread."""
+
+    @patch("routes.pipeline.enrich_urls")
+    @patch("routes.pipeline.call_grok")
+    def test_enrichment_stored_on_story(self, mock_grok, mock_enrich, app, db_session):
+        """Enrichment result is saved to story.url_enrichments."""
+        from routes.pipeline import _run_source_list_background
+
+        grok_output = "Source: https://x.com/user/status/123"
+        enrichment_json = json.dumps({"https://x.com/user/status/123": {"type": "twitter", "text": "tweet"}})
+        mock_grok.return_value = grok_output
+        mock_enrich.return_value = enrichment_json
+
+        prompt = Prompt(prompt_type="source-list", name="SL", prompt_text="t", created_by="t")
+        db_session.add(prompt)
+        db_session.flush()
+
+        story = Story(source_list_prompt_id=prompt.id, created_by="test")
+        db_session.add(story)
+        db_session.flush()
+
+        run = PipelineRun(story_id=story.id, prompt_id=prompt.id, step_type="source-list", status="running")
+        db_session.add(run)
+        db_session.commit()
+
+        _run_source_list_background(app, story.id, "t", "", prompt.id)
+
+        db_session.expire_all()
+        updated_story = db_session.get(Story, story.id)
+        assert updated_story.source_list_output == grok_output
+        assert updated_story.url_enrichments == enrichment_json
+
+    @patch("routes.pipeline.enrich_urls")
+    @patch("routes.pipeline.call_grok")
+    def test_enrichment_failure_does_not_block(self, mock_grok, mock_enrich, app, db_session):
+        """Enrichment exception does not prevent source list from completing."""
+        from routes.pipeline import _run_source_list_background
+
+        mock_grok.return_value = "Some output with https://example.com"
+        mock_enrich.side_effect = RuntimeError("enrichment boom")
+
+        prompt = Prompt(prompt_type="source-list", name="SL", prompt_text="t", created_by="t")
+        db_session.add(prompt)
+        db_session.flush()
+
+        story = Story(source_list_prompt_id=prompt.id, created_by="test")
+        db_session.add(story)
+        db_session.flush()
+
+        run = PipelineRun(story_id=story.id, prompt_id=prompt.id, step_type="source-list", status="running")
+        db_session.add(run)
+        db_session.commit()
+
+        _run_source_list_background(app, story.id, "t", "", prompt.id)
+
+        db_session.expire_all()
+        updated_story = db_session.get(Story, story.id)
+        assert updated_story.source_list_output == "Some output with https://example.com"
+        assert updated_story.url_enrichments is None
+
+        updated_run = PipelineRun.query.filter_by(story_id=story.id).first()
+        assert updated_run.status == "completed"

@@ -18,6 +18,7 @@ from models.pipeline_run import PipelineRun
 from decorators.login_required import login_required
 from services.grok_service import call_grok, GrokAPIError
 from services.pipeline_service import run_pipeline
+from services.url_enrichment_service import enrich_urls
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,15 @@ def _run_source_list_background(app, story_id, prompt_text, context_str, prompt_
             duration_ms = int(time.time() * 1000) - start_ms
 
             story.source_list_output = output
+
+            # Enrich any URLs found in the output (best-effort)
+            try:
+                enrichments = enrich_urls(output)
+                if enrichments:
+                    story.url_enrichments = enrichments
+            except Exception as enrich_exc:
+                logger.warning("[--] URL enrichment failed: %s", enrich_exc)
+
             run.output_text = output
             run.status = "completed"
             run.duration_ms = duration_ms
@@ -224,6 +234,7 @@ def get_pipeline_status(story_id):
         "story_id": story.id,
         "status": overall,
         "source_list_output": story.source_list_output,
+        "url_enrichments": story.url_enrichments,
         "selected_story": story.selected_story,
         "refinement_output": story.refinement_output,
         "amy_bot_output": story.amy_bot_output,
