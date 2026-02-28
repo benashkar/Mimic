@@ -164,7 +164,7 @@ def call_grok_with_search(prompt_text, context=""):
     }
 
     payload = {
-        "model": "grok-3",
+        "model": "grok-4-1-fast-non-reasoning",
         "input": input_messages,
         "tools": [
             {
