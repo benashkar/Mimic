@@ -54,12 +54,12 @@ function parseSources(text) {
         const author = authorMatch ? authorMatch[1].trim() : ''
 
         // Extract post content for the label
-        const contentMatch = p.match(/\*\*Post(?:\s+Content)?\*\*:\s*["""]?([\s\S]*?)["""]?\s*(?:\*\*Link\*\*:|\*\*Engagement\*\*:|$)/)
-        const content = contentMatch ? contentMatch[1].replace(/["""]/g, '').trim() : ''
+        const contentMatch = p.match(/\*\*Post(?:\s+Content)?\*\*:\s*["\u201C\u201D]?([\s\S]*?)["\u201C\u201D]?\s*(?:\*\*Link\*\*:|\*\*Engagement\*\*:|$)/)
+        const content = contentMatch ? contentMatch[1].replace(/["\u201C\u201D]/g, '').trim() : ''
 
         const label = author
-          ? `${topicTitle} — ${author}${content ? ': ' + content.substring(0, 80) + '...' : ''}`
-          : `${topicTitle} — Post`
+          ? `${topicTitle} \u2014 ${author}${content ? ': ' + content.substring(0, 80) + '...' : ''}`
+          : `${topicTitle} \u2014 Post`
 
         items.push({ label, body: p })
       }
@@ -89,6 +89,15 @@ function parseSources(text) {
   return items
 }
 
+// Find enrichment data for a source body by matching URLs in the body text.
+function findEnrichment(body, enrichments) {
+  if (!enrichments || !body) return null
+  const urlMatch = body.match(/https?:\/\/[^\s<>"']+/)
+  if (!urlMatch) return null
+  const url = urlMatch[0].replace(/[.,;:!?)>\]})]+$/, '')
+  return enrichments[url] || null
+}
+
 function SourceListRunPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -96,6 +105,7 @@ function SourceListRunPage() {
 
   const [prompt, setPrompt] = useState(null)
   const [output, setOutput] = useState(null)
+  const [enrichments, setEnrichments] = useState(null)
   const [storyId, setStoryId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -135,6 +145,11 @@ function SourceListRunPage() {
           if (status.status === 'completed') {
             clearInterval(pollRef.current)
             setOutput(status.source_list_output)
+            if (status.url_enrichments) {
+              try {
+                setEnrichments(JSON.parse(status.url_enrichments))
+              } catch (_) { /* ignore parse errors */ }
+            }
             setStatusMsg(null)
             setLoading(false)
           } else if (status.status === 'failed') {
@@ -205,38 +220,91 @@ function SourceListRunPage() {
 
           {sources.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {sources.map((source, i) => (
-                <div
-                  key={i}
-                  style={{
-                    padding: '1rem',
-                    borderRadius: '6px',
-                    border: '1px solid #ddd',
-                    background: '#f9f9f9',
-                  }}
-                >
-                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '0.5rem', color: '#333' }}>
-                    {i + 1}. {source.label}
-                  </div>
-                  <pre style={{ whiteSpace: 'pre-wrap', margin: '0.5rem 0', fontSize: '0.8rem', color: '#555', maxHeight: '150px', overflow: 'auto' }}>
-                    {source.body}
-                  </pre>
-                  <button
-                    onClick={() => handleRunPipeline(source.body)}
+              {sources.map((source, i) => {
+                const enrichment = findEnrichment(source.body, enrichments)
+                return (
+                  <div
+                    key={i}
                     style={{
-                      padding: '0.4rem 1.25rem',
-                      fontSize: '0.9rem',
-                      background: '#007bff',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
+                      padding: '1rem',
+                      borderRadius: '6px',
+                      border: '1px solid #ddd',
+                      background: enrichment?.type === 'twitter'
+                        ? '#e8f4fd'
+                        : enrichment?.type === 'website'
+                          ? '#e8f5e9'
+                          : '#f9f9f9',
                     }}
                   >
-                    Run Pipeline
-                  </button>
-                </div>
-              ))}
+                    <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '0.5rem', color: '#333' }}>
+                      {i + 1}. {source.label}
+                    </div>
+
+                    {enrichment?.type === 'twitter' && (
+                      <div style={{ margin: '0.5rem 0', padding: '0.75rem', background: '#fff', borderRadius: '4px', border: '1px solid #b3d9f2' }}>
+                        <div style={{ fontWeight: 'bold', color: '#1da1f2', marginBottom: '0.25rem' }}>
+                          @{enrichment.author_name}
+                        </div>
+                        <p style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#333' }}>
+                          {enrichment.text}
+                        </p>
+                        <a
+                          href={enrichment.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: '#1da1f2', fontSize: '0.85rem' }}
+                        >
+                          View on X
+                        </a>
+                      </div>
+                    )}
+
+                    {enrichment?.type === 'website' && (
+                      <div style={{ margin: '0.5rem 0', padding: '0.75rem', background: '#fff', borderRadius: '4px', border: '1px solid #a5d6a7' }}>
+                        {enrichment.title && (
+                          <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: '#2e7d32' }}>
+                            {enrichment.title}
+                          </div>
+                        )}
+                        <p style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', color: '#555' }}>
+                          {enrichment.text}
+                        </p>
+                        <a
+                          href={enrichment.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: '#2e7d32', fontSize: '0.85rem' }}
+                        >
+                          {enrichment.url}
+                        </a>
+                      </div>
+                    )}
+
+                    {!enrichment && (
+                      <pre style={{ whiteSpace: 'pre-wrap', margin: '0.5rem 0', fontSize: '0.8rem', color: '#555', maxHeight: '150px', overflow: 'auto' }}>
+                        {/^https?:\/\/\S+$/.test(source.body.trim())
+                          ? <a href={source.body.trim()} target="_blank" rel="noopener noreferrer">{source.body.trim()}</a>
+                          : source.body}
+                      </pre>
+                    )}
+
+                    <button
+                      onClick={() => handleRunPipeline(source.body)}
+                      style={{
+                        padding: '0.4rem 1.25rem',
+                        fontSize: '0.9rem',
+                        background: '#007bff',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Run Pipeline
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <pre style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '6px', whiteSpace: 'pre-wrap', border: '1px solid #ddd' }}>

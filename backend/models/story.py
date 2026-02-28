@@ -37,6 +37,7 @@ class Story(db.Model):
     source_list_input = db.Column(db.Text)
     source_list_output = db.Column(db.Text)
     selected_story = db.Column(db.Text)
+    url_enrichments = db.Column(db.Text)
 
     # Routing snapshot (copied from source list config at runtime)
     opportunity = db.Column(db.String(255))
@@ -84,6 +85,7 @@ class Story(db.Model):
             "source_list_input": self.source_list_input,
             "source_list_output": self.source_list_output,
             "selected_story": self.selected_story,
+            "url_enrichments": self.url_enrichments,
             "opportunity": self.opportunity,
             "state": self.state,
             "publications": self.publications,
