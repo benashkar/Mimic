@@ -176,27 +176,31 @@ class TestListAgencies:
         assert resp.get_json() == []
 
     def test_list_distinct_agencies(self, client, auth_headers, db_session):
-        """Returns distinct agency values from prompts."""
+        """Returns distinct agencies with their opportunities."""
         db_session.add(Prompt(
             prompt_type="source-list", name="SL1", prompt_text="t",
-            agency="Agency Alpha", created_by="test",
+            agency="Agency Alpha", opportunity="Michigan", created_by="test",
         ))
         db_session.add(Prompt(
             prompt_type="source-list", name="SL2", prompt_text="t",
-            agency="Agency Alpha", created_by="test",
+            agency="Agency Alpha", opportunity="Ohio", created_by="test",
         ))
         db_session.add(Prompt(
             prompt_type="source-list", name="SL3", prompt_text="t",
-            agency="Agency Beta", created_by="test",
+            agency="Agency Beta", opportunity="Texas", created_by="test",
         ))
         db_session.flush()
 
         headers = auth_headers("admin9@plmediaagency.com", "admin")
         resp = client.get("/api/admin/agencies", headers=headers)
         data = resp.get_json()
-        assert "Agency Alpha" in data
-        assert "Agency Beta" in data
+        agency_names = [a["agency"] for a in data]
+        assert "Agency Alpha" in agency_names
+        assert "Agency Beta" in agency_names
         assert len(data) == 2
+        alpha = next(a for a in data if a["agency"] == "Agency Alpha")
+        assert "Michigan" in alpha["opportunities"]
+        assert "Ohio" in alpha["opportunities"]
 
     def test_requires_admin(self, client, auth_headers):
         """Non-admin returns 403."""

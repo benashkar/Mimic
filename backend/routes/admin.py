@@ -166,13 +166,26 @@ def set_user_agencies(user_id):
 @admin_bp.route("/agencies", methods=["GET"])
 @admin_required
 def list_agencies():
-    """List distinct agency values from existing prompts."""
+    """List distinct agencies with their opportunities from prompts.
+
+    Returns: [{ "agency": "...", "opportunities": ["Michigan", "Ohio", ...] }, ...]
+    """
     rows = (
-        db.session.query(Prompt.agency)
+        db.session.query(Prompt.agency, Prompt.opportunity)
         .filter(Prompt.agency.isnot(None), Prompt.agency != "")
+        .filter(Prompt.prompt_type == "source-list")
         .distinct()
-        .order_by(Prompt.agency)
+        .order_by(Prompt.agency, Prompt.opportunity)
         .all()
     )
-    agencies = [r[0] for r in rows]
-    return jsonify(agencies)
+    grouped = {}
+    for agency, opp in rows:
+        if agency not in grouped:
+            grouped[agency] = []
+        if opp and opp not in grouped[agency]:
+            grouped[agency].append(opp)
+    result = [
+        {"agency": ag, "opportunities": sorted(opps)}
+        for ag, opps in sorted(grouped.items())
+    ]
+    return jsonify(result)

@@ -278,7 +278,10 @@ function InviteModal({ onInvite, onCancel }) {
 
 function AgencyEditor({ user, availableAgencies, onSave, onCancel }) {
   const [assignments, setAssignments] = useState(
-    user.agencies.map((ua) => ({ agency: ua.agency, opportunity: ua.opportunity || '' }))
+    user.agencies.map((ua) => ({
+      agency: ua.agency,
+      opportunity: ua.opportunity || '__all__',
+    }))
   )
   const [saving, setSaving] = useState(false)
 
@@ -291,20 +294,35 @@ function AgencyEditor({ user, availableAgencies, onSave, onCancel }) {
   }
 
   function updateRow(index, field, value) {
-    setAssignments(assignments.map((a, i) => i === index ? { ...a, [field]: value } : a))
+    const updated = assignments.map((a, i) => {
+      if (i !== index) return a
+      if (field === 'agency') {
+        // Reset opportunity when agency changes
+        return { ...a, agency: value, opportunity: '' }
+      }
+      return { ...a, [field]: value }
+    })
+    setAssignments(updated)
+  }
+
+  function getOpportunities(agencyName) {
+    const entry = availableAgencies.find((a) => a.agency === agencyName)
+    return entry ? entry.opportunities : []
   }
 
   async function handleSave() {
     setSaving(true)
     const cleaned = assignments
-      .filter((a) => a.agency.trim())
+      .filter((a) => a.agency && a.opportunity)
       .map((a) => ({
-        agency: a.agency.trim(),
-        opportunity: a.opportunity.trim() || null,
+        agency: a.agency,
+        opportunity: a.opportunity === '__all__' ? null : a.opportunity,
       }))
     await onSave(cleaned)
     setSaving(false)
   }
+
+  const allValid = assignments.every((a) => a.agency && a.opportunity)
 
   return (
     <div style={{
@@ -320,41 +338,50 @@ function AgencyEditor({ user, availableAgencies, onSave, onCancel }) {
         background: '#fff',
         borderRadius: '8px',
         padding: '1.5rem',
-        width: '500px',
+        width: '550px',
         maxHeight: '80vh',
         overflow: 'auto',
       }}>
         <h3>Edit Access: {user.display_name || user.email}</h3>
         <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Leave opportunity blank to grant access to all opportunities under an agency.
+          Select an agency and choose &quot;All Opportunities&quot; or a specific one.
         </p>
 
-        {assignments.map((a, i) => (
-          <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-            <select
-              value={a.agency}
-              onChange={(e) => updateRow(i, 'agency', e.target.value)}
-              style={{ flex: 2, padding: '0.35rem' }}
-            >
-              <option value="">Select agency...</option>
-              {availableAgencies.map((ag) => (
-                <option key={ag} value={ag}>{ag}</option>
-              ))}
-            </select>
-            <input
-              placeholder="Opportunity (optional)"
-              value={a.opportunity}
-              onChange={(e) => updateRow(i, 'opportunity', e.target.value)}
-              style={{ flex: 1, padding: '0.35rem' }}
-            />
-            <button
-              onClick={() => removeRow(i)}
-              style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem' }}
-            >
-              x
-            </button>
-          </div>
-        ))}
+        {assignments.map((a, i) => {
+          const opps = getOpportunities(a.agency)
+          return (
+            <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+              <select
+                value={a.agency}
+                onChange={(e) => updateRow(i, 'agency', e.target.value)}
+                style={{ flex: 1, padding: '0.35rem' }}
+              >
+                <option value="">Select agency...</option>
+                {availableAgencies.map((ag) => (
+                  <option key={ag.agency} value={ag.agency}>{ag.agency}</option>
+                ))}
+              </select>
+              <select
+                value={a.opportunity}
+                onChange={(e) => updateRow(i, 'opportunity', e.target.value)}
+                style={{ flex: 1, padding: '0.35rem' }}
+                disabled={!a.agency}
+              >
+                <option value="">Select opportunity...</option>
+                {a.agency && <option value="__all__">All Opportunities</option>}
+                {opps.map((opp) => (
+                  <option key={opp} value={opp}>{opp}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => removeRow(i)}
+                style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem' }}
+              >
+                x
+              </button>
+            </div>
+          )
+        })}
 
         <button onClick={addRow} style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
           + Add Agency
@@ -364,8 +391,15 @@ function AgencyEditor({ user, availableAgencies, onSave, onCancel }) {
           <button onClick={onCancel}>Cancel</button>
           <button
             onClick={handleSave}
-            disabled={saving}
-            style={{ background: '#28a745', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.4rem 1rem', cursor: 'pointer' }}
+            disabled={saving || !allValid}
+            style={{
+              background: saving || !allValid ? '#6c757d' : '#28a745',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '0.4rem 1rem',
+              cursor: saving || !allValid ? 'not-allowed' : 'pointer',
+            }}
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
