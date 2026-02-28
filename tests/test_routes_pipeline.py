@@ -289,7 +289,7 @@ class TestSourceListEnrichment:
     """Tests for URL enrichment in the source list background thread."""
 
     @patch("routes.pipeline.enrich_urls")
-    @patch("routes.pipeline.call_grok")
+    @patch("routes.pipeline.call_grok_with_search")
     def test_enrichment_stored_on_story(self, mock_grok, mock_enrich, app, db_session):
         """Enrichment result is saved to story.url_enrichments."""
         from routes.pipeline import _run_source_list_background
@@ -319,7 +319,7 @@ class TestSourceListEnrichment:
         assert updated_story.url_enrichments == enrichment_json
 
     @patch("routes.pipeline.enrich_urls")
-    @patch("routes.pipeline.call_grok")
+    @patch("routes.pipeline.call_grok_with_search")
     def test_enrichment_failure_does_not_block(self, mock_grok, mock_enrich, app, db_session):
         """Enrichment exception does not prevent source list from completing."""
         from routes.pipeline import _run_source_list_background

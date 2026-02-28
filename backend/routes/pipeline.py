@@ -16,7 +16,7 @@ from models.prompt import Prompt
 from models.story import Story
 from models.pipeline_run import PipelineRun
 from decorators.login_required import login_required
-from services.grok_service import call_grok, GrokAPIError
+from services.grok_service import call_grok, call_grok_with_search, GrokAPIError
 from services.pipeline_service import run_pipeline
 from services.url_enrichment_service import enrich_urls
 
@@ -33,7 +33,7 @@ def _run_source_list_background(app, story_id, prompt_text, context_str, prompt_
 
         start_ms = int(time.time() * 1000)
         try:
-            output = call_grok(prompt_text, context=context_str)
+            output = call_grok_with_search(prompt_text, context=context_str)
             duration_ms = int(time.time() * 1000) - start_ms
 
             story.source_list_output = output

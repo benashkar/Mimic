@@ -34,7 +34,7 @@ class TestSourceListRoute:
     """Tests for POST /api/pipeline/source-list."""
 
     @patch("routes.pipeline.threading.Thread", _SyncThread)
-    @patch("routes.pipeline.call_grok")
+    @patch("routes.pipeline.call_grok_with_search")
     def test_source_list_success(self, mock_grok, client, db_session, auth_headers):
         """Valid source-list prompt returns 202, background processes, status shows result."""
         mock_grok.return_value = "Topic 1: Illinois budget...\nTopic 2: Chicago transit..."
