@@ -144,11 +144,14 @@ def call_grok_with_search(prompt_text, context=""):
     if not api_key:
         raise GrokAPIError("GROK_API_KEY is not configured")
 
-    # Build input array — system context + user prompt
-    input_messages = []
+    # Build input — Responses API only supports "user" role in input,
+    # so prepend context to the user message
     if context:
-        input_messages.append({"role": "system", "content": context})
-    input_messages.append({"role": "user", "content": prompt_text})
+        full_prompt = f"{context}\n\n{prompt_text}"
+    else:
+        full_prompt = prompt_text
+
+    input_messages = [{"role": "user", "content": full_prompt}]
 
     # Date range: last 7 days to cover "24-48 hours or up to 7 days"
     today = datetime.now(timezone.utc)
@@ -161,7 +164,7 @@ def call_grok_with_search(prompt_text, context=""):
     }
 
     payload = {
-        "model": "grok-3-fast",
+        "model": "grok-3",
         "input": input_messages,
         "tools": [
             {
@@ -170,7 +173,6 @@ def call_grok_with_search(prompt_text, context=""):
                 "to_date": to_date,
             }
         ],
-        "temperature": 0.7,
     }
 
     start_ms = int(time.time() * 1000)
