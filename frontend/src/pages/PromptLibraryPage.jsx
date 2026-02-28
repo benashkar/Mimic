@@ -272,7 +272,7 @@ function PromptLibraryPage() {
       {!loading && filter !== 'all' && (
         <PromptSection
           title={filter}
-          prompts={prompts}
+          prompts={filterPrompts(prompts)}
           isAdmin={isAdmin}
           onEdit={(p) => { setEditingPrompt(p); setShowForm(true) }}
           onDelete={handleDelete}
