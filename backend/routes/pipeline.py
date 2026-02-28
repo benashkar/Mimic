@@ -16,7 +16,7 @@ from models.prompt import Prompt
 from models.story import Story
 from models.pipeline_run import PipelineRun
 from decorators.login_required import login_required
-from services.grok_service import call_grok, call_grok_with_search, GrokAPIError
+from services.grok_service import call_grok_with_search, GrokAPIError
 from services.pipeline_service import run_pipeline
 from services.url_enrichment_service import enrich_urls
 

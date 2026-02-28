@@ -6,6 +6,7 @@ function PipelinePage() {
   const [searchParams] = useSearchParams()
   const storyId = searchParams.get('story_id')
   const selectedStory = decodeURIComponent(searchParams.get('selected') || '')
+  const urlRefinementPromptId = searchParams.get('refinement_prompt_id')
 
   const [refinementPrompts, setRefinementPrompts] = useState([])
   const [selectedPromptId, setSelectedPromptId] = useState(null)
@@ -14,13 +15,18 @@ function PipelinePage() {
   const [error, setError] = useState(null)
   const [statusMsg, setStatusMsg] = useState(null)
   const [sourceListOutput, setSourceListOutput] = useState(null)
+  const [autoStarted, setAutoStarted] = useState(false)
   const pollRef = useRef(null)
 
   useEffect(() => {
     apiClient('/prompts?type=papa')
       .then((data) => {
         setRefinementPrompts(data)
-        if (data.length > 0) setSelectedPromptId(data[0].id)
+        if (urlRefinementPromptId) {
+          setSelectedPromptId(parseInt(urlRefinementPromptId, 10))
+        } else if (data.length > 0) {
+          setSelectedPromptId(data[0].id)
+        }
       })
       .catch((err) => setError(err.message))
 
@@ -35,6 +41,14 @@ function PipelinePage() {
 
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
+
+  // Auto-start pipeline when refinement_prompt_id is provided via URL
+  useEffect(() => {
+    if (urlRefinementPromptId && selectedPromptId && storyId && selectedStory && !autoStarted && !loading && !result) {
+      setAutoStarted(true)
+      handleRun()
+    }
+  }, [selectedPromptId])
 
   async function handleRun() {
     if (!selectedPromptId || !storyId || !selectedStory) return
@@ -91,11 +105,19 @@ function PipelinePage() {
 
       <div style={{ background: '#f4f4f4', padding: '1rem', borderRadius: '6px', marginBottom: '1rem' }}>
         <h3>Selected Topic</h3>
-        <pre style={{ whiteSpace: 'pre-wrap', overflow: 'auto', fontSize: '0.9rem', lineHeight: '1.5' }}>{selectedStory}</pre>
+        {/^https?:\/\/\S+$/.test(selectedStory.trim()) ? (
+          <p style={{ fontSize: '0.9rem', lineHeight: '1.5' }}>
+            <a href={selectedStory.trim()} target="_blank" rel="noopener noreferrer">{selectedStory.trim()}</a>
+            <br />
+            <span style={{ color: '#666', fontSize: '0.85rem' }}>Open the link above to view the source content. Full Grok output is shown below.</span>
+          </p>
+        ) : (
+          <pre style={{ whiteSpace: 'pre-wrap', overflow: 'auto', fontSize: '0.9rem', lineHeight: '1.5' }}>{selectedStory}</pre>
+        )}
       </div>
 
       {sourceListOutput && (
-        <details style={{ marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '6px', padding: '0.5rem' }}>
+        <details open style={{ marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '6px', padding: '0.5rem' }}>
           <summary style={{ cursor: 'pointer', fontWeight: 'bold', padding: '0.5rem' }}>
             Full Source List (Grok Search Results)
           </summary>

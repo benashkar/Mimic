@@ -14,3 +14,4 @@ from models.user import User  # noqa: E402, F401
 from models.prompt import Prompt  # noqa: E402, F401
 from models.story import Story  # noqa: E402, F401
 from models.pipeline_run import PipelineRun  # noqa: E402, F401
+from models.user_agency import UserAgency  # noqa: E402, F401

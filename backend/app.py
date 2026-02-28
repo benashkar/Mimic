@@ -56,12 +56,48 @@ def create_app(config_class=Config):
         app.logger.info("[OK] Health check passed")
         return jsonify({"status": "ok", "service": "mimic-api"})
 
-    # One-time prompt patches (safe to re-run, no-ops if already applied)
+    # Auto-create tables for fresh databases (idempotent — skips existing)
     with app.app_context():
+        _auto_migrate(app)
         _patch_amy_bot_prompt(app)
 
     app.logger.info("[OK] Mimic API initialized")
     return app
+
+
+def _auto_migrate(app):
+    """Create missing tables and run SQL migrations for new columns.
+
+    db.create_all() only creates tables that don't exist yet (safe for
+    production). The ALTER TABLE statements in migrations use IF NOT EXISTS
+    so they're also safe to re-run.
+    """
+    import os
+    from sqlalchemy import text
+
+    try:
+        db.create_all()
+        app.logger.info("[OK] db.create_all() completed")
+    except Exception as exc:
+        app.logger.warning("[--] db.create_all() skipped: %s", exc)
+        return
+
+    # Run SQL migrations that use IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
+    migration_dir = os.path.join(os.path.dirname(__file__), "migrations")
+    if os.path.isdir(migration_dir):
+        for filename in sorted(os.listdir(migration_dir)):
+            if not filename.endswith(".sql"):
+                continue
+            filepath = os.path.join(migration_dir, filename)
+            try:
+                with open(filepath) as f:
+                    sql = f.read()
+                db.session.execute(text(sql))
+                db.session.commit()
+                app.logger.info("[OK] Migration applied: %s", filename)
+            except Exception as exc:
+                db.session.rollback()
+                app.logger.warning("[--] Migration %s skipped: %s", filename, exc)
 
 
 def _patch_amy_bot_prompt(app):

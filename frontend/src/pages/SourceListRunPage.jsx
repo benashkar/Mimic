@@ -141,6 +141,8 @@ function SourceListRunPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [statusMsg, setStatusMsg] = useState(null)
+  const [refinementPrompts, setRefinementPrompts] = useState([])
+  const [queue, setQueue] = useState([]) // { sourceIndex, sourceBody, refinementPromptId, promptName }
   const pollRef = useRef(null)
 
   useEffect(() => {
@@ -149,6 +151,10 @@ function SourceListRunPage() {
         .then(setPrompt)
         .catch((err) => setError(err.message))
     }
+    // Fetch refinement prompts (PAPA/PSST) for inline buttons
+    apiClient('/prompts?type=papa')
+      .then(setRefinementPrompts)
+      .catch(() => {}) // Non-critical
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [promptId])
 
@@ -204,8 +210,34 @@ function SourceListRunPage() {
     }
   }
 
-  function handleRunPipeline(topicBody) {
-    navigate(`/pipeline?story_id=${storyId}&selected=${encodeURIComponent(topicBody.substring(0, 2000))}`)
+  function handleRunPipeline(topicBody, refinementPromptId) {
+    navigate(`/pipeline?story_id=${storyId}&selected=${encodeURIComponent(topicBody.substring(0, 2000))}&refinement_prompt_id=${refinementPromptId}`)
+  }
+
+  function toggleQueue(sourceIndex, sourceBody, refinementPromptId, promptName) {
+    setQueue((prev) => {
+      const exists = prev.find((q) => q.sourceIndex === sourceIndex && q.refinementPromptId === refinementPromptId)
+      if (exists) {
+        return prev.filter((q) => !(q.sourceIndex === sourceIndex && q.refinementPromptId === refinementPromptId))
+      }
+      return [...prev, { sourceIndex, sourceBody, refinementPromptId, promptName }]
+    })
+  }
+
+  function isQueued(sourceIndex, refinementPromptId) {
+    return queue.some((q) => q.sourceIndex === sourceIndex && q.refinementPromptId === refinementPromptId)
+  }
+
+  function handleRunAll() {
+    // Navigate to batch results with queued items
+    const batchData = queue.map((q) => ({
+      storyId,
+      sourceBody: q.sourceBody.substring(0, 2000),
+      refinementPromptId: q.refinementPromptId,
+      promptName: q.promptName,
+    }))
+    sessionStorage.setItem('mimic_batch_queue', JSON.stringify(batchData))
+    navigate('/batch-results')
   }
 
   if (!promptId) {
@@ -246,7 +278,7 @@ function SourceListRunPage() {
         <div style={{ marginTop: '1rem' }}>
           <h2>{sources.length} Sources Found</h2>
           <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '1rem' }}>
-            Each source below can be sent to the pipeline individually.
+            Click a refinement type to run immediately, or use <strong>+</strong> to queue multiple sources and run them all at once.
           </p>
 
           {sources.length > 0 ? (
@@ -324,20 +356,62 @@ function SourceListRunPage() {
                       </pre>
                     )}
 
-                    <button
-                      onClick={() => handleRunPipeline(source.body)}
-                      style={{
-                        padding: '0.4rem 1.25rem',
-                        fontSize: '0.9rem',
-                        background: '#007bff',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Run Pipeline
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      {refinementPrompts.length > 0 ? (
+                        refinementPrompts.map((rp) => {
+                          const queued = isQueued(i, rp.id)
+                          return (
+                            <div key={rp.id} style={{ display: 'flex', gap: '0.25rem' }}>
+                              <button
+                                onClick={() => handleRunPipeline(source.body, rp.id)}
+                                style={{
+                                  padding: '0.4rem 1rem',
+                                  fontSize: '0.85rem',
+                                  background: '#007bff',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '4px 0 0 4px',
+                                  cursor: 'pointer',
+                                }}
+                                title={`Run ${rp.name} now`}
+                              >
+                                {rp.name}
+                              </button>
+                              <button
+                                onClick={() => toggleQueue(i, source.body, rp.id, rp.name)}
+                                style={{
+                                  padding: '0.4rem 0.5rem',
+                                  fontSize: '0.85rem',
+                                  background: queued ? '#28a745' : '#6c757d',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '0 4px 4px 0',
+                                  cursor: 'pointer',
+                                }}
+                                title={queued ? 'Remove from queue' : `Queue ${rp.name}`}
+                              >
+                                {queued ? '✓' : '+'}
+                              </button>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <button
+                          onClick={() => navigate(`/pipeline?story_id=${storyId}&selected=${encodeURIComponent(source.body.substring(0, 2000))}`)}
+                          style={{
+                            padding: '0.4rem 1.25rem',
+                            fontSize: '0.9rem',
+                            background: '#007bff',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Run Pipeline
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )
               })}
@@ -347,6 +421,41 @@ function SourceListRunPage() {
               {output}
             </pre>
           )}
+        </div>
+      )}
+
+      {queue.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: '#333',
+          color: '#fff',
+          padding: '0.75rem 1.5rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          zIndex: 1000,
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.3)',
+        }}>
+          <span style={{ fontSize: '0.95rem' }}>
+            <strong>{queue.length}</strong> source{queue.length !== 1 ? 's' : ''} queued
+          </span>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => setQueue([])}
+              style={{ padding: '0.5rem 1rem', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              Clear
+            </button>
+            <button
+              onClick={handleRunAll}
+              style={{ padding: '0.5rem 1.5rem', background: '#28a745', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              Run All
+            </button>
+          </div>
         </div>
       )}
     </div>

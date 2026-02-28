@@ -38,6 +38,9 @@ class Prompt(db.Model):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    # Agency grouping — used for user permission scoping
+    agency = db.Column(db.String(255))
+
     # Source List routing metadata (nullable — only for source-list type)
     issuer = db.Column(db.String(255))
     opportunity = db.Column(db.String(255))
@@ -68,6 +71,7 @@ class Prompt(db.Model):
             "prompt_text": self.prompt_text,
             "description": self.description,
             "is_active": self.is_active,
+            "agency": self.agency,
             "created_by": self.created_by,
             "updated_by": self.updated_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,

@@ -12,6 +12,14 @@ function PromptLibraryPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingPrompt, setEditingPrompt] = useState(null)
 
+  // Search / filter
+  const [searchText, setSearchText] = useState('')
+  const [agencyFilter, setAgencyFilter] = useState('')
+
+  // Batch source list running
+  const [selectedPrompts, setSelectedPrompts] = useState(new Set())
+  const [batchRunning, setBatchRunning] = useState({}) // { promptId: { storyId, status, error } }
+
   const isAdmin = user && user.role === 'admin'
 
   useEffect(() => {
@@ -63,9 +71,106 @@ function PromptLibraryPage() {
     }
   }
 
-  const sourceLists = prompts.filter((p) => p.prompt_type === 'source-list')
-  const refinement = prompts.filter((p) => p.prompt_type === 'papa')
-  const amyBots = prompts.filter((p) => p.prompt_type === 'amy-bot')
+  function togglePromptSelection(id) {
+    setSelectedPrompts((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllSourceLists() {
+    const filtered = filterPrompts(prompts.filter((p) => p.prompt_type === 'source-list'))
+    const slIds = filtered.map((p) => p.id)
+    setSelectedPrompts((prev) => {
+      const allSelected = slIds.every((id) => prev.has(id))
+      if (allSelected) return new Set() // deselect all
+      return new Set(slIds)
+    })
+  }
+
+  async function handleRunSelected() {
+    if (selectedPrompts.size === 0) return
+    const ids = Array.from(selectedPrompts)
+
+    // Fire all source list runs in parallel
+    const newRunning = {}
+    ids.forEach((id) => { newRunning[id] = { storyId: null, status: 'starting', error: null } })
+    setBatchRunning((prev) => ({ ...prev, ...newRunning }))
+
+    await Promise.allSettled(ids.map(async (promptId) => {
+      try {
+        const data = await apiClient('/pipeline/source-list', {
+          method: 'POST',
+          body: JSON.stringify({ prompt_id: promptId }),
+        })
+        setBatchRunning((prev) => ({
+          ...prev,
+          [promptId]: { storyId: data.story_id, status: 'running', error: null },
+        }))
+        // Start polling for this prompt's story
+        pollBatchStatus(promptId, data.story_id)
+      } catch (err) {
+        setBatchRunning((prev) => ({
+          ...prev,
+          [promptId]: { storyId: null, status: 'failed', error: err.message },
+        }))
+      }
+    }))
+
+    setSelectedPrompts(new Set())
+  }
+
+  function pollBatchStatus(promptId, storyId) {
+    const interval = setInterval(async () => {
+      try {
+        const status = await apiClient(`/pipeline/status/${storyId}`)
+        if (status.status === 'completed') {
+          clearInterval(interval)
+          setBatchRunning((prev) => ({
+            ...prev,
+            [promptId]: { storyId, status: 'completed', error: null },
+          }))
+        } else if (status.status === 'failed') {
+          clearInterval(interval)
+          const failedRun = (status.runs || []).find((r) => r.status === 'failed')
+          setBatchRunning((prev) => ({
+            ...prev,
+            [promptId]: { storyId, status: 'failed', error: failedRun ? failedRun.error_message : 'Failed' },
+          }))
+        }
+      } catch (err) {
+        clearInterval(interval)
+        setBatchRunning((prev) => ({
+          ...prev,
+          [promptId]: { storyId, status: 'failed', error: err.message },
+        }))
+      }
+    }, 2000)
+  }
+
+  // Derive distinct agencies from loaded prompts for filter dropdown
+  const allAgencies = [...new Set(
+    prompts.filter((p) => p.agency).map((p) => p.agency)
+  )].sort()
+
+  // Apply search/agency filter client-side
+  function filterPrompts(list) {
+    return list.filter((p) => {
+      if (agencyFilter && (p.agency || '').toLowerCase() !== agencyFilter.toLowerCase()) return false
+      if (searchText) {
+        const q = searchText.toLowerCase()
+        const haystack = [p.name, p.agency, p.opportunity, p.description].filter(Boolean).join(' ').toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      return true
+    })
+  }
+
+  const sourceLists = filterPrompts(prompts.filter((p) => p.prompt_type === 'source-list'))
+  const refinement = filterPrompts(prompts.filter((p) => p.prompt_type === 'papa'))
+  const amyBots = filterPrompts(prompts.filter((p) => p.prompt_type === 'amy-bot'))
 
   return (
     <div>
@@ -78,7 +183,7 @@ function PromptLibraryPage() {
         )}
       </div>
 
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '0.75rem' }}>
         {['all', 'source-list', 'papa', 'amy-bot'].map((f) => (
           <button
             key={f}
@@ -94,6 +199,34 @@ function PromptLibraryPage() {
         ))}
       </div>
 
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+        <input
+          type="text"
+          placeholder="Search prompts..."
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{ padding: '0.4rem 0.6rem', flex: 1, maxWidth: '300px', border: '1px solid #ccc', borderRadius: '4px' }}
+        />
+        <select
+          value={agencyFilter}
+          onChange={(e) => setAgencyFilter(e.target.value)}
+          style={{ padding: '0.4rem', border: '1px solid #ccc', borderRadius: '4px' }}
+        >
+          <option value="">All Agencies</option>
+          {allAgencies.map((ag) => (
+            <option key={ag} value={ag}>{ag}</option>
+          ))}
+        </select>
+        {(searchText || agencyFilter) && (
+          <button
+            onClick={() => { setSearchText(''); setAgencyFilter('') }}
+            style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', cursor: 'pointer' }}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
       {error && <p style={{ color: 'red' }}>Error: {error}</p>}
       {loading && <p>Loading...</p>}
 
@@ -107,13 +240,17 @@ function PromptLibraryPage() {
 
       {!loading && filter === 'all' && (
         <>
-          <PromptSection
-            title="Source Lists"
+          <GroupedSourceLists
             prompts={sourceLists}
             isAdmin={isAdmin}
             onEdit={(p) => { setEditingPrompt(p); setShowForm(true) }}
             onDelete={handleDelete}
-            showRouting
+            selectable
+            selectedPrompts={selectedPrompts}
+            onToggleSelect={togglePromptSelection}
+            onSelectAll={selectAllSourceLists}
+            onRunSelected={handleRunSelected}
+            batchRunning={batchRunning}
           />
           <PromptSection
             title="Refinement (PAPA / PSST)"
@@ -140,13 +277,191 @@ function PromptLibraryPage() {
           onEdit={(p) => { setEditingPrompt(p); setShowForm(true) }}
           onDelete={handleDelete}
           showRouting={filter === 'source-list'}
+          selectable={filter === 'source-list'}
+          selectedPrompts={selectedPrompts}
+          onToggleSelect={togglePromptSelection}
+          onSelectAll={selectAllSourceLists}
+          onRunSelected={handleRunSelected}
+          batchRunning={batchRunning}
         />
       )}
     </div>
   )
 }
 
-function PromptSection({ title, prompts, isAdmin, onEdit, onDelete, showRouting }) {
+function GroupedSourceLists({ prompts, isAdmin, onEdit, onDelete, selectable, selectedPrompts, onToggleSelect, onSelectAll, onRunSelected, batchRunning }) {
+  if (prompts.length === 0) {
+    return (
+      <div style={{ marginBottom: '2rem' }}>
+        <h2>Source Lists</h2>
+        <p style={{ color: '#888' }}>No prompts yet.</p>
+      </div>
+    )
+  }
+
+  // Group prompts by agency → opportunity
+  const grouped = {}
+  for (const p of prompts) {
+    const agency = p.agency || 'Ungrouped'
+    const opp = p.opportunity || 'General'
+    if (!grouped[agency]) grouped[agency] = {}
+    if (!grouped[agency][opp]) grouped[agency][opp] = []
+    grouped[agency][opp].push(p)
+  }
+
+  const agencyNames = Object.keys(grouped).sort()
+  // If everything is "Ungrouped", show flat list instead
+  const hasAgencies = agencyNames.length > 1 || agencyNames[0] !== 'Ungrouped'
+
+  const selectedCount = selectable ? prompts.filter((p) => selectedPrompts && selectedPrompts.has(p.id)).length : 0
+  const anyBatchRunning = batchRunning && Object.values(batchRunning).some((r) => r.status === 'running' || r.status === 'starting')
+
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <h2>Source Lists ({prompts.length})</h2>
+        {selectable && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button onClick={onSelectAll} style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}>
+              {selectedCount === prompts.length ? 'Deselect All' : 'Select All'}
+            </button>
+            {selectedCount > 0 && (
+              <button
+                onClick={onRunSelected}
+                disabled={anyBatchRunning}
+                style={{
+                  padding: '0.25rem 0.75rem',
+                  fontSize: '0.85rem',
+                  background: anyBatchRunning ? '#6c757d' : '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: anyBatchRunning ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {anyBatchRunning ? 'Running...' : `Run Selected (${selectedCount})`}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {hasAgencies ? (
+        agencyNames.map((agency) => {
+          const opportunities = Object.keys(grouped[agency]).sort()
+          return (
+            <div key={agency} style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: '0.5rem 0', color: '#333', borderBottom: '1px solid #ddd', paddingBottom: '0.25rem' }}>
+                {agency}
+              </h3>
+              {opportunities.map((opp) => {
+                const oppPrompts = grouped[agency][opp]
+                return (
+                  <div key={opp} style={{ marginLeft: '1rem', marginBottom: '0.75rem' }}>
+                    <h4 style={{ margin: '0.25rem 0', color: '#555', fontSize: '0.95rem' }}>
+                      {opp} ({oppPrompts.length} prompt{oppPrompts.length !== 1 ? 's' : ''})
+                    </h4>
+                    <PromptCardList
+                      prompts={oppPrompts}
+                      isAdmin={isAdmin}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                      selectable={selectable}
+                      selectedPrompts={selectedPrompts}
+                      onToggleSelect={onToggleSelect}
+                      batchRunning={batchRunning}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })
+      ) : (
+        <PromptCardList
+          prompts={prompts}
+          isAdmin={isAdmin}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          selectable={selectable}
+          selectedPrompts={selectedPrompts}
+          onToggleSelect={onToggleSelect}
+          batchRunning={batchRunning}
+        />
+      )}
+    </div>
+  )
+}
+
+function PromptCardList({ prompts, isAdmin, onEdit, onDelete, selectable, selectedPrompts, onToggleSelect, batchRunning }) {
+  return (
+    <div style={{ display: 'grid', gap: '0.5rem' }}>
+      {prompts.map((p) => {
+        const batchStatus = batchRunning && batchRunning[p.id]
+        return (
+          <div key={p.id} style={{
+            border: batchStatus?.status === 'completed' ? '2px solid #28a745' : batchStatus?.status === 'failed' ? '2px solid #dc3545' : '1px solid #ddd',
+            borderRadius: '6px',
+            padding: '0.75rem 1rem',
+            background: batchStatus?.status === 'running' || batchStatus?.status === 'starting' ? '#fff9e6' : undefined,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                {selectable && (
+                  <input
+                    type="checkbox"
+                    checked={selectedPrompts && selectedPrompts.has(p.id)}
+                    onChange={() => onToggleSelect(p.id)}
+                    style={{ marginTop: '0.2rem' }}
+                  />
+                )}
+                <div>
+                  <strong style={{ fontSize: '0.9rem' }}>{p.name}</strong>
+                  {p.description && <p style={{ color: '#666', margin: '0.15rem 0', fontSize: '0.85rem' }}>{p.description}</p>}
+                  {p.opportunity && (
+                    <p style={{ fontSize: '0.8rem', color: '#444', margin: '0.1rem 0' }}>
+                      {p.state} | {p.pitches_per_week}/wk
+                    </p>
+                  )}
+                  {batchStatus && (
+                    <div style={{ marginTop: '0.2rem', fontSize: '0.8rem' }}>
+                      {(batchStatus.status === 'starting' || batchStatus.status === 'running') && (
+                        <span style={{ color: '#856404' }}>Running...</span>
+                      )}
+                      {batchStatus.status === 'completed' && (
+                        <span>
+                          <span style={{ color: '#155724', fontWeight: 'bold' }}>Completed</span>
+                          {' '}
+                          <Link to={`/source-list?prompt_id=${p.id}`} style={{ color: '#007bff' }}>View Results</Link>
+                        </span>
+                      )}
+                      {batchStatus.status === 'failed' && (
+                        <span style={{ color: '#721c24' }}>Failed: {batchStatus.error}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                <Link to={`/source-list?prompt_id=${p.id}`} style={{ padding: '0.2rem 0.6rem', background: '#007bff', color: '#fff', textDecoration: 'none', borderRadius: '4px', fontSize: '0.85rem' }}>
+                  Run
+                </Link>
+                {isAdmin && (
+                  <>
+                    <button onClick={() => onEdit(p)} style={{ fontSize: '0.85rem' }}>Edit</button>
+                    <button onClick={() => onDelete(p.id)} style={{ color: 'red', fontSize: '0.85rem' }}>Delete</button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function PromptSection({ title, prompts, isAdmin, onEdit, onDelete, showRouting, selectable, selectedPrompts, onToggleSelect, onSelectAll, onRunSelected, batchRunning }) {
   if (prompts.length === 0) {
     return (
       <div style={{ marginBottom: '2rem' }}>
@@ -156,38 +471,105 @@ function PromptSection({ title, prompts, isAdmin, onEdit, onDelete, showRouting 
     )
   }
 
+  const selectedCount = selectable ? prompts.filter((p) => selectedPrompts && selectedPrompts.has(p.id)).length : 0
+  const anyBatchRunning = batchRunning && Object.values(batchRunning).some((r) => r.status === 'running' || r.status === 'starting')
+
   return (
     <div style={{ marginBottom: '2rem' }}>
-      <h2>{title} ({prompts.length})</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <h2>{title} ({prompts.length})</h2>
+        {selectable && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              onClick={onSelectAll}
+              style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}
+            >
+              {selectedCount === prompts.length ? 'Deselect All' : 'Select All'}
+            </button>
+            {selectedCount > 0 && (
+              <button
+                onClick={onRunSelected}
+                disabled={anyBatchRunning}
+                style={{
+                  padding: '0.25rem 0.75rem',
+                  fontSize: '0.85rem',
+                  background: anyBatchRunning ? '#6c757d' : '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: anyBatchRunning ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {anyBatchRunning ? 'Running...' : `Run Selected (${selectedCount})`}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
       <div style={{ display: 'grid', gap: '0.75rem' }}>
-        {prompts.map((p) => (
-          <div key={p.id} style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <strong>{p.name}</strong>
-                {p.description && <p style={{ color: '#666', margin: '0.25rem 0', fontSize: '0.9rem' }}>{p.description}</p>}
-                {showRouting && p.opportunity && (
-                  <p style={{ fontSize: '0.85rem', color: '#444' }}>
-                    {p.opportunity} | {p.state} | {p.pitches_per_week}/wk
-                  </p>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {showRouting && (
-                  <Link to={`/source-list?prompt_id=${p.id}`} style={{ padding: '0.25rem 0.75rem', background: '#007bff', color: '#fff', textDecoration: 'none', borderRadius: '4px', fontSize: '0.9rem' }}>
-                    Run
-                  </Link>
-                )}
-                {isAdmin && (
-                  <>
-                    <button onClick={() => onEdit(p)}>Edit</button>
-                    <button onClick={() => onDelete(p.id)} style={{ color: 'red' }}>Delete</button>
-                  </>
-                )}
+        {prompts.map((p) => {
+          const batchStatus = batchRunning && batchRunning[p.id]
+          return (
+            <div key={p.id} style={{
+              border: batchStatus?.status === 'completed' ? '2px solid #28a745' : batchStatus?.status === 'failed' ? '2px solid #dc3545' : '1px solid #ddd',
+              borderRadius: '6px',
+              padding: '1rem',
+              background: batchStatus?.status === 'running' || batchStatus?.status === 'starting' ? '#fff9e6' : undefined,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                  {selectable && (
+                    <input
+                      type="checkbox"
+                      checked={selectedPrompts && selectedPrompts.has(p.id)}
+                      onChange={() => onToggleSelect(p.id)}
+                      style={{ marginTop: '0.25rem' }}
+                    />
+                  )}
+                  <div>
+                    <strong>{p.name}</strong>
+                    {p.description && <p style={{ color: '#666', margin: '0.25rem 0', fontSize: '0.9rem' }}>{p.description}</p>}
+                    {showRouting && p.opportunity && (
+                      <p style={{ fontSize: '0.85rem', color: '#444' }}>
+                        {p.opportunity} | {p.state} | {p.pitches_per_week}/wk
+                      </p>
+                    )}
+                    {batchStatus && (
+                      <div style={{ marginTop: '0.25rem', fontSize: '0.85rem' }}>
+                        {(batchStatus.status === 'starting' || batchStatus.status === 'running') && (
+                          <span style={{ color: '#856404' }}>Running...</span>
+                        )}
+                        {batchStatus.status === 'completed' && (
+                          <span>
+                            <span style={{ color: '#155724', fontWeight: 'bold' }}>Completed</span>
+                            {' '}
+                            <Link to={`/source-list?prompt_id=${p.id}`} style={{ color: '#007bff' }}>View Results</Link>
+                          </span>
+                        )}
+                        {batchStatus.status === 'failed' && (
+                          <span style={{ color: '#721c24' }}>Failed: {batchStatus.error}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                  {showRouting && (
+                    <Link to={`/source-list?prompt_id=${p.id}`} style={{ padding: '0.25rem 0.75rem', background: '#007bff', color: '#fff', textDecoration: 'none', borderRadius: '4px', fontSize: '0.9rem' }}>
+                      Run
+                    </Link>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <button onClick={() => onEdit(p)}>Edit</button>
+                      <button onClick={() => onDelete(p.id)} style={{ color: 'red' }}>Delete</button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -199,6 +581,7 @@ function PromptForm({ prompt, onSave, onCancel }) {
     name: prompt?.name || '',
     prompt_text: prompt?.prompt_text || '',
     description: prompt?.description || '',
+    agency: prompt?.agency || '',
     issuer: prompt?.issuer || '',
     opportunity: prompt?.opportunity || '',
     state: prompt?.state || '',
@@ -242,6 +625,11 @@ function PromptForm({ prompt, onSave, onCancel }) {
       <div style={{ marginBottom: '0.75rem' }}>
         <label>Description: </label>
         <input name="description" value={formData.description} onChange={handleChange} style={{ width: '100%' }} />
+      </div>
+
+      <div style={{ marginBottom: '0.75rem' }}>
+        <label>Agency: </label>
+        <input name="agency" value={formData.agency} onChange={handleChange} placeholder="e.g. US Regional News Network - Baseline" style={{ width: '100%' }} />
       </div>
 
       <div style={{ marginBottom: '0.75rem' }}>
