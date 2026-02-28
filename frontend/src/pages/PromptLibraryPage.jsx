@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiClient } from '../api/client'
 
 function PromptLibraryPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [prompts, setPrompts] = useState([])
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
@@ -19,8 +20,33 @@ function PromptLibraryPage() {
   // Batch source list running
   const [selectedPrompts, setSelectedPrompts] = useState(new Set())
   const [batchRunning, setBatchRunning] = useState({}) // { promptId: { storyId, status, error } }
+  const batchNavigatedRef = useRef(false)
 
   const isAdmin = user && user.role === 'admin'
+
+  // Auto-navigate to batch review when all runs finish
+  useEffect(() => {
+    const entries = Object.entries(batchRunning)
+    if (entries.length === 0) return
+    if (batchNavigatedRef.current) return
+
+    const anyPending = entries.some(([, r]) => r.status === 'running' || r.status === 'starting')
+    if (anyPending) return
+
+    // All done — build URL from completed entries
+    const completed = entries
+      .filter(([, r]) => r.status === 'completed' && r.storyId)
+      .map(([promptId, r]) => {
+        const prompt = prompts.find((p) => p.id === parseInt(promptId, 10))
+        const name = prompt ? encodeURIComponent(prompt.name) : ''
+        return `${r.storyId}:${name}`
+      })
+
+    if (completed.length > 0) {
+      batchNavigatedRef.current = true
+      navigate(`/batch-review?stories=${completed.join(',')}`)
+    }
+  }, [batchRunning, prompts, navigate])
 
   useEffect(() => {
     loadPrompts()
@@ -316,12 +342,37 @@ function GroupedSourceLists({ prompts, isAdmin, onEdit, onDelete, selectable, se
   const selectedCount = selectable ? prompts.filter((p) => selectedPrompts && selectedPrompts.has(p.id)).length : 0
   const anyBatchRunning = batchRunning && Object.values(batchRunning).some((r) => r.status === 'running' || r.status === 'starting')
 
+  // Build "Review All Results" link when batch runs have completed
+  const completedEntries = batchRunning
+    ? prompts
+        .filter((p) => batchRunning[p.id]?.status === 'completed' && batchRunning[p.id]?.storyId)
+        .map((p) => `${batchRunning[p.id].storyId}:${encodeURIComponent(p.name)}`)
+    : []
+  const allBatchDone = batchRunning && Object.keys(batchRunning).length > 0 && !anyBatchRunning
+  const reviewAllUrl = completedEntries.length > 0 ? `/batch-review?stories=${completedEntries.join(',')}` : null
+
   return (
     <div style={{ marginBottom: '2rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
         <h2>Source Lists ({prompts.length})</h2>
         {selectable && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {allBatchDone && reviewAllUrl && (
+              <Link
+                to={reviewAllUrl}
+                style={{
+                  padding: '0.25rem 0.75rem',
+                  fontSize: '0.85rem',
+                  background: '#007bff',
+                  color: '#fff',
+                  textDecoration: 'none',
+                  borderRadius: '4px',
+                  fontWeight: 'bold',
+                }}
+              >
+                Review All Results ({completedEntries.length})
+              </Link>
+            )}
             <button onClick={onSelectAll} style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}>
               {selectedCount === prompts.length ? 'Deselect All' : 'Select All'}
             </button>
@@ -428,12 +479,15 @@ function PromptCardList({ prompts, isAdmin, onEdit, onDelete, selectable, select
                       {(batchStatus.status === 'starting' || batchStatus.status === 'running') && (
                         <span style={{ color: '#856404' }}>Running...</span>
                       )}
-                      {batchStatus.status === 'completed' && (
+                      {batchStatus.status === 'completed' && batchStatus.storyId && (
                         <span>
                           <span style={{ color: '#155724', fontWeight: 'bold' }}>Completed</span>
                           {' '}
-                          <Link to={`/source-list?prompt_id=${p.id}`} style={{ color: '#007bff' }}>View Results</Link>
+                          <Link to={`/batch-review?stories=${batchStatus.storyId}:${encodeURIComponent(p.name)}`} style={{ color: '#007bff' }}>View Results</Link>
                         </span>
+                      )}
+                      {batchStatus.status === 'completed' && !batchStatus.storyId && (
+                        <span style={{ color: '#155724', fontWeight: 'bold' }}>Completed</span>
                       )}
                       {batchStatus.status === 'failed' && (
                         <span style={{ color: '#721c24' }}>Failed: {batchStatus.error}</span>
@@ -474,12 +528,36 @@ function PromptSection({ title, prompts, isAdmin, onEdit, onDelete, showRouting,
   const selectedCount = selectable ? prompts.filter((p) => selectedPrompts && selectedPrompts.has(p.id)).length : 0
   const anyBatchRunning = batchRunning && Object.values(batchRunning).some((r) => r.status === 'running' || r.status === 'starting')
 
+  const completedEntries = batchRunning
+    ? prompts
+        .filter((p) => batchRunning[p.id]?.status === 'completed' && batchRunning[p.id]?.storyId)
+        .map((p) => `${batchRunning[p.id].storyId}:${encodeURIComponent(p.name)}`)
+    : []
+  const allBatchDone = batchRunning && Object.keys(batchRunning).length > 0 && !anyBatchRunning
+  const reviewAllUrl = completedEntries.length > 0 ? `/batch-review?stories=${completedEntries.join(',')}` : null
+
   return (
     <div style={{ marginBottom: '2rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
         <h2>{title} ({prompts.length})</h2>
         {selectable && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {allBatchDone && reviewAllUrl && (
+              <Link
+                to={reviewAllUrl}
+                style={{
+                  padding: '0.25rem 0.75rem',
+                  fontSize: '0.85rem',
+                  background: '#007bff',
+                  color: '#fff',
+                  textDecoration: 'none',
+                  borderRadius: '4px',
+                  fontWeight: 'bold',
+                }}
+              >
+                Review All Results ({completedEntries.length})
+              </Link>
+            )}
             <button
               onClick={onSelectAll}
               style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}
@@ -539,12 +617,15 @@ function PromptSection({ title, prompts, isAdmin, onEdit, onDelete, showRouting,
                         {(batchStatus.status === 'starting' || batchStatus.status === 'running') && (
                           <span style={{ color: '#856404' }}>Running...</span>
                         )}
-                        {batchStatus.status === 'completed' && (
+                        {batchStatus.status === 'completed' && batchStatus.storyId && (
                           <span>
                             <span style={{ color: '#155724', fontWeight: 'bold' }}>Completed</span>
                             {' '}
-                            <Link to={`/source-list?prompt_id=${p.id}`} style={{ color: '#007bff' }}>View Results</Link>
+                            <Link to={`/batch-review?stories=${batchStatus.storyId}:${encodeURIComponent(p.name)}`} style={{ color: '#007bff' }}>View Results</Link>
                           </span>
+                        )}
+                        {batchStatus.status === 'completed' && !batchStatus.storyId && (
+                          <span style={{ color: '#155724', fontWeight: 'bold' }}>Completed</span>
                         )}
                         {batchStatus.status === 'failed' && (
                           <span style={{ color: '#721c24' }}>Failed: {batchStatus.error}</span>
