@@ -10,8 +10,7 @@ function DashboardPage() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetch('/api/health')
-      .then((res) => res.json())
+    apiClient('/health')
       .then((data) => setHealth(data))
       .catch((err) => setError(err.message))
 
