@@ -77,17 +77,23 @@ function parseSources(text) {
 
   // --- Format C: Fallback — split on blank-line-separated blocks ---
   const blocks = text.split(/\n\s*\n/).map(b => b.trim()).filter(b => b.length > 0)
-  // Only use fallback if we get multiple blocks
   if (blocks.length > 1) {
     for (const block of blocks) {
-      // Skip separator lines (---, ===, etc.)
-      if (/^[-=]{2,}\s*$/.test(block)) continue
-      // Skip bare section headers with no real content (e.g., "**Key Topics**:")
-      if (block.length < 50 && !block.includes('http') && !block.includes('@')) continue
-      // Skip preamble/methodology blocks (long paragraphs without links or bold)
-      if (block.length > 500 && !block.includes('http') && !/\*\*/.test(block)) continue
-      // Skip blocks that are just ### headers with no tweet/source content
-      if (/^#{1,4}\s+/.test(block) && !block.includes('http') && !block.includes('@') && block.split('\n').length < 3) continue
+      // Only include blocks that look like actual source content:
+      // must contain a URL, @handle, or tweet/author indicators
+      const hasUrl = /https?:\/\//.test(block)
+      const hasHandle = /@\w+/.test(block)
+      const hasTweetIndicator = /\b(Author|Tweet|Content|Post \d):/i.test(block)
+
+      if (!hasUrl && !hasHandle && !hasTweetIndicator) continue
+
+      // Still skip metadata blocks that mention search methodology
+      const lower = block.toLowerCase()
+      if (/^\*\*search parameters\*\*/i.test(block)) continue
+      if (/^\*\*context\*\*/i.test(block)) continue
+      if (/^\*\*localization note\*\*/i.test(block)) continue
+      if (/^#{1,4}\s+.*search results/i.test(block)) continue
+
       items.push({ label: block.substring(0, 100) + (block.length > 100 ? '...' : ''), body: block })
     }
   }
