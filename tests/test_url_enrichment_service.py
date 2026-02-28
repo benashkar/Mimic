@@ -77,12 +77,15 @@ class TestEnrichTwitterUrl:
     """Tests for enrich_twitter_url()."""
 
     @patch("services.url_enrichment_service.requests.get")
-    def test_success(self, mock_get):
+    def test_success_fxtwitter(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "author_name": "John Doe",
-            "html": '<blockquote><p>This is a tweet about basketball</p></blockquote>',
+            "tweet": {
+                "text": "This is a tweet about basketball",
+                "created_at": "2026-02-15T12:00:00Z",
+                "author": {"name": "John Doe"},
+            }
         }
         mock_get.return_value = mock_resp
 
@@ -91,6 +94,7 @@ class TestEnrichTwitterUrl:
         assert result["type"] == "twitter"
         assert result["author_name"] == "John Doe"
         assert "basketball" in result["text"]
+        assert result["created_at"] == "2026-02-15T12:00:00Z"
         assert result["url"] == "https://x.com/johndoe/status/123"
 
     @patch("services.url_enrichment_service.requests.get")

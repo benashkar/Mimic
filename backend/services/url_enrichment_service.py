@@ -65,12 +65,34 @@ def _parse_twitter_id_and_user(url):
 
 
 def enrich_twitter_url(url):
-    """Fetch tweet context. Tries oEmbed first, falls back to FxTwitter API.
+    """Fetch tweet context. Tries FxTwitter first (has date), falls back to oEmbed.
 
-    Returns dict with author_name, text (tweet body), and url,
+    Returns dict with author_name, text, created_at, and url,
     or None on failure.
     """
-    # --- Attempt 1: Twitter oEmbed ---
+    # --- Attempt 1: FxTwitter API (has date, preferred) ---
+    username, status_id = _parse_twitter_id_and_user(url)
+    if username and status_id:
+        try:
+            fx_url = f"https://api.fxtwitter.com/{username}/status/{status_id}"
+            resp = requests.get(fx_url, timeout=URL_TIMEOUT)
+            if resp.status_code == 200:
+                data = resp.json()
+                tweet = data.get("tweet") or {}
+                author = tweet.get("author") or {}
+
+                return {
+                    "type": "twitter",
+                    "author_name": author.get("name") or username,
+                    "text": tweet.get("text") or "",
+                    "created_at": tweet.get("created_at") or "",
+                    "url": url,
+                }
+            logger.info("[--] FxTwitter %d for %s, trying oEmbed", resp.status_code, url)
+        except requests.RequestException as exc:
+            logger.info("[--] FxTwitter error for %s: %s, trying oEmbed", url, exc)
+
+    # --- Attempt 2: Twitter oEmbed (no date, fallback) ---
     oembed_url = "https://publish.twitter.com/oembed"
     try:
         resp = requests.get(
@@ -88,37 +110,14 @@ def enrich_twitter_url(url):
                 "type": "twitter",
                 "author_name": data.get("author_name") or "",
                 "text": tweet_text,
+                "created_at": "",
                 "url": url,
             }
-        logger.info("[--] Twitter oEmbed %d for %s, trying FxTwitter", resp.status_code, url)
+        logger.info("[--] Twitter oEmbed %d for %s", resp.status_code, url)
     except requests.RequestException as exc:
-        logger.info("[--] Twitter oEmbed error for %s: %s, trying FxTwitter", url, exc)
+        logger.info("[--] Twitter oEmbed error for %s: %s", url, exc)
 
-    # --- Attempt 2: FxTwitter API (public, no auth needed) ---
-    username, status_id = _parse_twitter_id_and_user(url)
-    if not username or not status_id:
-        return None
-
-    try:
-        fx_url = f"https://api.fxtwitter.com/{username}/status/{status_id}"
-        resp = requests.get(fx_url, timeout=URL_TIMEOUT)
-        if resp.status_code != 200:
-            logger.info("[--] FxTwitter %d for %s", resp.status_code, url)
-            return None
-
-        data = resp.json()
-        tweet = data.get("tweet") or {}
-        author = tweet.get("author") or {}
-
-        return {
-            "type": "twitter",
-            "author_name": author.get("name") or username,
-            "text": tweet.get("text") or "",
-            "url": url,
-        }
-    except requests.RequestException as exc:
-        logger.info("[--] FxTwitter error for %s: %s", url, exc)
-        return None
+    return None
 
 
 def enrich_website_url(url):

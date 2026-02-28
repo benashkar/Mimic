@@ -105,6 +105,13 @@ def run_source_list():
         context_parts.append(f"Topic: {prompt.topic_summary}")
     if prompt.context:
         context_parts.append(f"Context: {prompt.context}")
+    # Enforce real links and dates — Grok has live X access
+    context_parts.append(
+        "IMPORTANT: For every X/Twitter post, you MUST include the real, "
+        "actual direct URL to the tweet (e.g. https://x.com/username/status/123456). "
+        "Never use placeholders like '(Placeholder for actual X post link)'. "
+        "Also include the date each post was published."
+    )
     context_str = "\n".join(context_parts)
 
     # Create Story record with routing snapshot

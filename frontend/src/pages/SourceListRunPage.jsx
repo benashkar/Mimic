@@ -242,8 +242,15 @@ function SourceListRunPage() {
 
                     {enrichment?.type === 'twitter' && (
                       <div style={{ margin: '0.5rem 0', padding: '0.75rem', background: '#fff', borderRadius: '4px', border: '1px solid #b3d9f2' }}>
-                        <div style={{ fontWeight: 'bold', color: '#1da1f2', marginBottom: '0.25rem' }}>
-                          @{enrichment.author_name}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                          <span style={{ fontWeight: 'bold', color: '#1da1f2' }}>
+                            @{enrichment.author_name}
+                          </span>
+                          {enrichment.created_at && (
+                            <span style={{ fontSize: '0.8rem', color: '#888' }}>
+                              {new Date(enrichment.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          )}
                         </div>
                         <p style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#333' }}>
                           {enrichment.text}
@@ -254,7 +261,7 @@ function SourceListRunPage() {
                           rel="noopener noreferrer"
                           style={{ color: '#1da1f2', fontSize: '0.85rem' }}
                         >
-                          View on X
+                          {enrichment.url}
                         </a>
                       </div>
                     )}
