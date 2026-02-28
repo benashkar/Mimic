@@ -12,6 +12,10 @@ function PromptLibraryPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingPrompt, setEditingPrompt] = useState(null)
 
+  // Search / filter
+  const [searchText, setSearchText] = useState('')
+  const [agencyFilter, setAgencyFilter] = useState('')
+
   // Batch source list running
   const [selectedPrompts, setSelectedPrompts] = useState(new Set())
   const [batchRunning, setBatchRunning] = useState({}) // { promptId: { storyId, status, error } }
@@ -77,7 +81,8 @@ function PromptLibraryPage() {
   }
 
   function selectAllSourceLists() {
-    const slIds = prompts.filter((p) => p.prompt_type === 'source-list').map((p) => p.id)
+    const filtered = filterPrompts(prompts.filter((p) => p.prompt_type === 'source-list'))
+    const slIds = filtered.map((p) => p.id)
     setSelectedPrompts((prev) => {
       const allSelected = slIds.every((id) => prev.has(id))
       if (allSelected) return new Set() // deselect all
@@ -145,9 +150,27 @@ function PromptLibraryPage() {
     }, 2000)
   }
 
-  const sourceLists = prompts.filter((p) => p.prompt_type === 'source-list')
-  const refinement = prompts.filter((p) => p.prompt_type === 'papa')
-  const amyBots = prompts.filter((p) => p.prompt_type === 'amy-bot')
+  // Derive distinct agencies from loaded prompts for filter dropdown
+  const allAgencies = [...new Set(
+    prompts.filter((p) => p.agency).map((p) => p.agency)
+  )].sort()
+
+  // Apply search/agency filter client-side
+  function filterPrompts(list) {
+    return list.filter((p) => {
+      if (agencyFilter && (p.agency || '').toLowerCase() !== agencyFilter.toLowerCase()) return false
+      if (searchText) {
+        const q = searchText.toLowerCase()
+        const haystack = [p.name, p.agency, p.opportunity, p.description].filter(Boolean).join(' ').toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      return true
+    })
+  }
+
+  const sourceLists = filterPrompts(prompts.filter((p) => p.prompt_type === 'source-list'))
+  const refinement = filterPrompts(prompts.filter((p) => p.prompt_type === 'papa'))
+  const amyBots = filterPrompts(prompts.filter((p) => p.prompt_type === 'amy-bot'))
 
   return (
     <div>
@@ -160,7 +183,7 @@ function PromptLibraryPage() {
         )}
       </div>
 
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '0.75rem' }}>
         {['all', 'source-list', 'papa', 'amy-bot'].map((f) => (
           <button
             key={f}
@@ -174,6 +197,34 @@ function PromptLibraryPage() {
             {f === 'all' ? 'All' : f === 'papa' ? 'Refinement (PAPA/PSST)' : f === 'source-list' ? 'Source Lists' : 'Amy Bot'}
           </button>
         ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+        <input
+          type="text"
+          placeholder="Search prompts..."
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{ padding: '0.4rem 0.6rem', flex: 1, maxWidth: '300px', border: '1px solid #ccc', borderRadius: '4px' }}
+        />
+        <select
+          value={agencyFilter}
+          onChange={(e) => setAgencyFilter(e.target.value)}
+          style={{ padding: '0.4rem', border: '1px solid #ccc', borderRadius: '4px' }}
+        >
+          <option value="">All Agencies</option>
+          {allAgencies.map((ag) => (
+            <option key={ag} value={ag}>{ag}</option>
+          ))}
+        </select>
+        {(searchText || agencyFilter) && (
+          <button
+            onClick={() => { setSearchText(''); setAgencyFilter('') }}
+            style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', cursor: 'pointer' }}
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {error && <p style={{ color: 'red' }}>Error: {error}</p>}
