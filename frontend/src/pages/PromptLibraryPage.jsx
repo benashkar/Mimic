@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiClient } from '../api/client'
 
 function PromptLibraryPage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const [prompts, setPrompts] = useState([])
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
@@ -163,7 +162,8 @@ function PromptLibraryPage() {
       })
 
     if (completed.length > 0) {
-      navigate(`/batch-review?stories=${completed.join(',')}`)
+      // Use window.location for reliable navigation after long async
+      window.location.href = `/batch-review?stories=${completed.join(',')}`
     }
   }
 
