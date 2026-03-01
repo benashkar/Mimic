@@ -13,6 +13,7 @@ from routes.prompts import prompts_bp
 from routes.pipeline import pipeline_bp
 from routes.stories import stories_bp
 from routes.admin import admin_bp
+from routes.scheduler import scheduler_bp
 
 
 def register_routes(app):
@@ -27,3 +28,4 @@ def register_routes(app):
     app.register_blueprint(pipeline_bp, url_prefix="/api/pipeline")
     app.register_blueprint(stories_bp, url_prefix="/api/stories")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
+    app.register_blueprint(scheduler_bp, url_prefix="/api/scheduler")

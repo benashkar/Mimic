@@ -42,6 +42,9 @@ class Config:
     # JWT settings
     JWT_EXPIRY_HOURS = int(os.environ.get("JWT_EXPIRY_HOURS") or "24")
 
+    # Scheduler secret — authenticates the cron job endpoint
+    SCHEDULER_SECRET = os.environ.get("SCHEDULER_SECRET") or ""
+
     # CORS — frontend URL for allowed origins
     FRONTEND_URL = os.environ.get("FRONTEND_URL") or "http://localhost:5173"
 
