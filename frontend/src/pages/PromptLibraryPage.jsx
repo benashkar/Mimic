@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiClient } from '../api/client'
@@ -20,8 +20,6 @@ function PromptLibraryPage() {
   // Batch source list running
   const [selectedPrompts, setSelectedPrompts] = useState(new Set())
   const [batchRunning, setBatchRunning] = useState({}) // { promptId: { storyId, status, error } }
-  // Track batch completion for auto-navigate (refs avoid stale closure issues)
-  const batchTracker = useRef({ total: 0, done: 0, stories: [], promptNames: {} })
 
   const isAdmin = user && user.role === 'admin'
 
@@ -97,89 +95,76 @@ function PromptLibraryPage() {
     if (selectedPrompts.size === 0) return
     const ids = Array.from(selectedPrompts)
 
-    // Initialize batch tracker for auto-navigate
+    // Build name mapping before clearing selection
     const nameMap = {}
     ids.forEach((id) => {
       const p = prompts.find((pr) => pr.id === id)
       if (p) nameMap[id] = p.name
     })
-    batchTracker.current = { total: ids.length, done: 0, stories: [], promptNames: nameMap }
 
-    // Fire all source list runs in parallel
+    // Mark all as starting
     const newRunning = {}
     ids.forEach((id) => { newRunning[id] = { storyId: null, status: 'starting', error: null } })
     setBatchRunning((prev) => ({ ...prev, ...newRunning }))
+    setSelectedPrompts(new Set())
 
-    await Promise.allSettled(ids.map(async (promptId) => {
-      try {
-        const data = await apiClient('/pipeline/source-list', {
-          method: 'POST',
-          body: JSON.stringify({ prompt_id: promptId }),
-        })
-        setBatchRunning((prev) => ({
-          ...prev,
-          [promptId]: { storyId: data.story_id, status: 'running', error: null },
-        }))
-        // Start polling for this prompt's story
-        pollBatchStatus(promptId, data.story_id)
-      } catch (err) {
-        setBatchRunning((prev) => ({
-          ...prev,
-          [promptId]: { storyId: null, status: 'failed', error: err.message },
-        }))
-        // Count failures toward done so we still navigate
-        batchTracker.current.done++
-        checkBatchComplete()
-      }
+    // Fire all source list runs in parallel, each returns a promise
+    // that resolves when the poll finishes (completed or failed)
+    const results = await Promise.allSettled(ids.map(async (promptId) => {
+      // Step 1: Start the source list run
+      const data = await apiClient('/pipeline/source-list', {
+        method: 'POST',
+        body: JSON.stringify({ prompt_id: promptId }),
+      })
+      setBatchRunning((prev) => ({
+        ...prev,
+        [promptId]: { storyId: data.story_id, status: 'running', error: null },
+      }))
+
+      // Step 2: Poll until done (returns a promise)
+      return await new Promise((resolve) => {
+        const interval = setInterval(async () => {
+          try {
+            const status = await apiClient(`/pipeline/status/${data.story_id}`)
+            if (status.status === 'completed') {
+              clearInterval(interval)
+              setBatchRunning((prev) => ({
+                ...prev,
+                [promptId]: { storyId: data.story_id, status: 'completed', error: null },
+              }))
+              resolve({ promptId, storyId: data.story_id, status: 'completed' })
+            } else if (status.status === 'failed') {
+              clearInterval(interval)
+              const failedRun = (status.runs || []).find((r) => r.status === 'failed')
+              setBatchRunning((prev) => ({
+                ...prev,
+                [promptId]: { storyId: data.story_id, status: 'failed', error: failedRun ? failedRun.error_message : 'Failed' },
+              }))
+              resolve({ promptId, storyId: data.story_id, status: 'failed' })
+            }
+          } catch (err) {
+            clearInterval(interval)
+            setBatchRunning((prev) => ({
+              ...prev,
+              [promptId]: { storyId: data.story_id, status: 'failed', error: err.message },
+            }))
+            resolve({ promptId, storyId: data.story_id, status: 'failed' })
+          }
+        }, 2000)
+      })
     }))
 
-    setSelectedPrompts(new Set())
-  }
+    // All done — build URL from completed runs and auto-navigate
+    const completed = results
+      .filter((r) => r.status === 'fulfilled' && r.value?.status === 'completed')
+      .map((r) => {
+        const name = nameMap[r.value.promptId] || ''
+        return `${r.value.storyId}:${encodeURIComponent(name)}`
+      })
 
-  function checkBatchComplete() {
-    const t = batchTracker.current
-    if (t.done >= t.total && t.stories.length > 0) {
-      const storiesParam = t.stories
-        .map((s) => `${s.storyId}:${encodeURIComponent(s.name)}`)
-        .join(',')
-      navigate(`/batch-review?stories=${storiesParam}`)
+    if (completed.length > 0) {
+      navigate(`/batch-review?stories=${completed.join(',')}`)
     }
-  }
-
-  function pollBatchStatus(promptId, storyId) {
-    const interval = setInterval(async () => {
-      try {
-        const status = await apiClient(`/pipeline/status/${storyId}`)
-        if (status.status === 'completed') {
-          clearInterval(interval)
-          setBatchRunning((prev) => ({
-            ...prev,
-            [promptId]: { storyId, status: 'completed', error: null },
-          }))
-          const name = batchTracker.current.promptNames[promptId] || ''
-          batchTracker.current.stories.push({ storyId, name })
-          batchTracker.current.done++
-          checkBatchComplete()
-        } else if (status.status === 'failed') {
-          clearInterval(interval)
-          const failedRun = (status.runs || []).find((r) => r.status === 'failed')
-          setBatchRunning((prev) => ({
-            ...prev,
-            [promptId]: { storyId, status: 'failed', error: failedRun ? failedRun.error_message : 'Failed' },
-          }))
-          batchTracker.current.done++
-          checkBatchComplete()
-        }
-      } catch (err) {
-        clearInterval(interval)
-        setBatchRunning((prev) => ({
-          ...prev,
-          [promptId]: { storyId, status: 'failed', error: err.message },
-        }))
-        batchTracker.current.done++
-        checkBatchComplete()
-      }
-    }, 2000)
   }
 
   // Derive distinct agencies from loaded prompts for filter dropdown
