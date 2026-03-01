@@ -83,6 +83,8 @@ def _auto_migrate(app):
         return
 
     # Run SQL migrations that use IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
+    # Each statement is executed individually — multi-statement files are
+    # split on semicolons so SQLAlchemy 2.0 handles them correctly.
     migration_dir = os.path.join(os.path.dirname(__file__), "migrations")
     if os.path.isdir(migration_dir):
         for filename in sorted(os.listdir(migration_dir)):
@@ -92,7 +94,12 @@ def _auto_migrate(app):
             try:
                 with open(filepath) as f:
                     sql = f.read()
-                db.session.execute(text(sql))
+                # Split on semicolons and execute each statement individually
+                for statement in sql.split(";"):
+                    stmt = statement.strip()
+                    if not stmt or stmt.startswith("--"):
+                        continue
+                    db.session.execute(text(stmt))
                 db.session.commit()
                 app.logger.info("[OK] Migration applied: %s", filename)
             except Exception as exc:
