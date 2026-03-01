@@ -164,6 +164,7 @@ def create_prompt():
         prompt.topic_summary = body.get("topic_summary") or ""
         prompt.context = body.get("context") or ""
         prompt.pitches_per_week = body.get("pitches_per_week")
+        prompt.schedule_enabled = bool(body.get("schedule_enabled"))
 
     db.session.add(prompt)
     db.session.commit()
@@ -201,7 +202,8 @@ def update_prompt(prompt_id):
     # Update routing metadata for source-list prompts
     if prompt.prompt_type == "source-list":
         for field in ["issuer", "opportunity", "state", "publications",
-                       "topic_summary", "context", "pitches_per_week"]:
+                       "topic_summary", "context", "pitches_per_week",
+                       "schedule_enabled"]:
             if field in body:
                 setattr(prompt, field, body[field])
 
