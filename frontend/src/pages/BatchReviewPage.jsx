@@ -142,34 +142,36 @@ function BatchReviewPage() {
     })
     setExecutionResults(initial)
 
-    // Fire all pipelines in parallel
-    await Promise.allSettled(queue.map(async (q) => {
-      try {
-        const data = await apiClient('/pipeline/run', {
-          method: 'POST',
-          body: JSON.stringify({
-            story_id: q.storyId,
-            selected_story: q.sourceBody.substring(0, 2000),
-            refinement_prompt_id: q.refinementPromptId,
-          }),
-        })
+    // Fire all pipelines in parallel, each returns the story_id used
+    const results = await Promise.allSettled(queue.map(async (q) => {
+      const data = await apiClient('/pipeline/run', {
+        method: 'POST',
+        body: JSON.stringify({
+          story_id: q.storyId,
+          selected_story: q.sourceBody.substring(0, 2000),
+          refinement_prompt_id: q.refinementPromptId,
+        }),
+      })
 
-        setExecutionResults((prev) => ({
-          ...prev,
-          [q.key]: { ...prev[q.key], status: 'running', pipelineStoryId: data.story_id },
-        }))
+      setExecutionResults((prev) => ({
+        ...prev,
+        [q.key]: { ...prev[q.key], status: 'running', pipelineStoryId: data.story_id },
+      }))
 
-        // Poll for completion
-        await pollForResult(q.key, data.story_id)
-      } catch (err) {
-        setExecutionResults((prev) => ({
-          ...prev,
-          [q.key]: { ...prev[q.key], status: 'failed', error: err.message },
-        }))
-      }
+      // Poll for completion
+      await pollForResult(q.key, data.story_id)
+      return data.story_id
     }))
 
     setExecuting(false)
+
+    // Auto-navigate to pipeline results page with all story IDs
+    const storyIds = results
+      .filter((r) => r.status === 'fulfilled')
+      .map((r) => r.value)
+    if (storyIds.length > 0) {
+      window.location.href = `/pipeline-results?stories=${storyIds.join(',')}`
+    }
   }
 
   function pollForResult(key, pipelineStoryId) {
