@@ -486,6 +486,19 @@ function PromptCardList({ prompts, isAdmin, onEdit, onDelete, selectable, select
                 )}
                 <div>
                   <strong style={{ fontSize: '0.9rem' }}>{p.name}</strong>
+                  {p.schedule_enabled && (
+                    <span style={{
+                      marginLeft: '0.5rem',
+                      padding: '0.1rem 0.4rem',
+                      fontSize: '0.7rem',
+                      fontWeight: 'bold',
+                      background: '#d4edda',
+                      color: '#155724',
+                      borderRadius: '3px',
+                    }}>
+                      Scheduled
+                    </span>
+                  )}
                   {p.description && <p style={{ color: '#666', margin: '0.15rem 0', fontSize: '0.85rem' }}>{p.description}</p>}
                   {p.opportunity && (
                     <p style={{ fontSize: '0.8rem', color: '#444', margin: '0.1rem 0' }}>
@@ -607,6 +620,19 @@ function PromptSection({ title, prompts, isAdmin, onEdit, onDelete, showRouting,
                   )}
                   <div>
                     <strong>{p.name}</strong>
+                    {p.schedule_enabled && (
+                      <span style={{
+                        marginLeft: '0.5rem',
+                        padding: '0.1rem 0.4rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 'bold',
+                        background: '#d4edda',
+                        color: '#155724',
+                        borderRadius: '3px',
+                      }}>
+                        Scheduled
+                      </span>
+                    )}
                     {p.description && <p style={{ color: '#666', margin: '0.25rem 0', fontSize: '0.9rem' }}>{p.description}</p>}
                     {showRouting && p.opportunity && (
                       <p style={{ fontSize: '0.85rem', color: '#444' }}>
@@ -671,6 +697,7 @@ function PromptForm({ prompt, onSave, onCancel }) {
     topic_summary: prompt?.topic_summary || '',
     context: prompt?.context || '',
     pitches_per_week: prompt?.pitches_per_week || '',
+    schedule_enabled: prompt?.schedule_enabled || false,
   })
 
   function handleChange(e) {
@@ -739,6 +766,20 @@ function PromptForm({ prompt, onSave, onCancel }) {
           <div style={{ marginBottom: '0.5rem' }}>
             <label>Pitches/Week: </label>
             <input name="pitches_per_week" type="number" value={formData.pitches_per_week} onChange={handleChange} />
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                name="schedule_enabled"
+                checked={formData.schedule_enabled}
+                onChange={(e) => setFormData({ ...formData, schedule_enabled: e.target.checked })}
+              />
+              Enable daily scheduled runs
+            </label>
+            <span style={{ fontSize: '0.8rem', color: '#666' }}>
+              When enabled, this source list will run automatically every day at 10:00 UTC
+            </span>
           </div>
         </>
       )}

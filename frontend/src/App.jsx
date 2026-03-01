@@ -12,6 +12,7 @@ import BatchResultsPage from './pages/BatchResultsPage'
 import BatchReviewPage from './pages/BatchReviewPage'
 import PipelineResultsPage from './pages/PipelineResultsPage'
 import AdminUsersPage from './pages/AdminUsersPage'
+import QueuePage from './pages/QueuePage'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
@@ -25,6 +26,7 @@ function AppNav() {
       <div>
         <Link to="/" style={{ marginRight: '1rem' }}>Dashboard</Link>
         <Link to="/prompts" style={{ marginRight: '1rem' }}>Prompts</Link>
+        <Link to="/queue" style={{ marginRight: '1rem' }}>Queue</Link>
         <Link to="/stories" style={{ marginRight: '1rem' }}>Stories</Link>
         {user.role === 'admin' && (
           <Link to="/admin/users" style={{ marginRight: '1rem' }}>Users</Link>
@@ -54,6 +56,7 @@ function App() {
             <Route path="/batch-review" element={<ProtectedRoute><BatchReviewPage /></ProtectedRoute>} />
             <Route path="/pipeline-results" element={<ProtectedRoute><PipelineResultsPage /></ProtectedRoute>} />
             <Route path="/batch-results" element={<ProtectedRoute><BatchResultsPage /></ProtectedRoute>} />
+            <Route path="/queue" element={<ProtectedRoute><QueuePage /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute><AdminUsersPage /></ProtectedRoute>} />
           </Routes>
         </main>

@@ -7,6 +7,7 @@ function DashboardPage() {
   const { user } = useAuth()
   const [health, setHealth] = useState(null)
   const [stats, setStats] = useState(null)
+  const [queueStats, setQueueStats] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -16,6 +17,10 @@ function DashboardPage() {
 
     apiClient('/stories/stats')
       .then((data) => setStats(data))
+      .catch(() => {})
+
+    apiClient('/queue/stats')
+      .then((data) => setQueueStats(data))
       .catch(() => {})
   }, [])
 
@@ -61,9 +66,34 @@ function DashboardPage() {
         </div>
       )}
 
+      {queueStats && queueStats.pending > 0 && (
+        <Link
+          to="/queue"
+          style={{
+            display: 'block',
+            marginBottom: '1.5rem',
+            padding: '1rem 1.5rem',
+            background: '#fff3cd',
+            border: '1px solid #ffc107',
+            borderRadius: '8px',
+            textDecoration: 'none',
+            color: '#856404',
+            fontSize: '1rem',
+          }}
+        >
+          <strong>{queueStats.pending} source{queueStats.pending !== 1 ? 's' : ''} pending review</strong>
+          <span style={{ marginLeft: '0.5rem', fontSize: '0.9rem' }}>
+            — Open the review queue to process them
+          </span>
+        </Link>
+      )}
+
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
         <Link to="/prompts" style={{ padding: '0.75rem 1.5rem', background: '#007bff', color: '#fff', textDecoration: 'none', borderRadius: '4px' }}>
           Prompt Library
+        </Link>
+        <Link to="/queue" style={{ padding: '0.75rem 1.5rem', background: '#ffc107', color: '#333', textDecoration: 'none', borderRadius: '4px' }}>
+          Review Queue
         </Link>
         <Link to="/stories" style={{ padding: '0.75rem 1.5rem', background: '#6c757d', color: '#fff', textDecoration: 'none', borderRadius: '4px' }}>
           View Stories
