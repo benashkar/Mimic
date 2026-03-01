@@ -20,33 +20,10 @@ function PromptLibraryPage() {
   // Batch source list running
   const [selectedPrompts, setSelectedPrompts] = useState(new Set())
   const [batchRunning, setBatchRunning] = useState({}) // { promptId: { storyId, status, error } }
-  const batchNavigatedRef = useRef(false)
+  // Track batch completion for auto-navigate (refs avoid stale closure issues)
+  const batchTracker = useRef({ total: 0, done: 0, stories: [], promptNames: {} })
 
   const isAdmin = user && user.role === 'admin'
-
-  // Auto-navigate to batch review when all runs finish
-  useEffect(() => {
-    const entries = Object.entries(batchRunning)
-    if (entries.length === 0) return
-    if (batchNavigatedRef.current) return
-
-    const anyPending = entries.some(([, r]) => r.status === 'running' || r.status === 'starting')
-    if (anyPending) return
-
-    // All done — build URL from completed entries
-    const completed = entries
-      .filter(([, r]) => r.status === 'completed' && r.storyId)
-      .map(([promptId, r]) => {
-        const prompt = prompts.find((p) => p.id === parseInt(promptId, 10))
-        const name = prompt ? encodeURIComponent(prompt.name) : ''
-        return `${r.storyId}:${name}`
-      })
-
-    if (completed.length > 0) {
-      batchNavigatedRef.current = true
-      navigate(`/batch-review?stories=${completed.join(',')}`)
-    }
-  }, [batchRunning, prompts, navigate])
 
   useEffect(() => {
     loadPrompts()
@@ -120,6 +97,14 @@ function PromptLibraryPage() {
     if (selectedPrompts.size === 0) return
     const ids = Array.from(selectedPrompts)
 
+    // Initialize batch tracker for auto-navigate
+    const nameMap = {}
+    ids.forEach((id) => {
+      const p = prompts.find((pr) => pr.id === id)
+      if (p) nameMap[id] = p.name
+    })
+    batchTracker.current = { total: ids.length, done: 0, stories: [], promptNames: nameMap }
+
     // Fire all source list runs in parallel
     const newRunning = {}
     ids.forEach((id) => { newRunning[id] = { storyId: null, status: 'starting', error: null } })
@@ -142,10 +127,23 @@ function PromptLibraryPage() {
           ...prev,
           [promptId]: { storyId: null, status: 'failed', error: err.message },
         }))
+        // Count failures toward done so we still navigate
+        batchTracker.current.done++
+        checkBatchComplete()
       }
     }))
 
     setSelectedPrompts(new Set())
+  }
+
+  function checkBatchComplete() {
+    const t = batchTracker.current
+    if (t.done >= t.total && t.stories.length > 0) {
+      const storiesParam = t.stories
+        .map((s) => `${s.storyId}:${encodeURIComponent(s.name)}`)
+        .join(',')
+      navigate(`/batch-review?stories=${storiesParam}`)
+    }
   }
 
   function pollBatchStatus(promptId, storyId) {
@@ -158,6 +156,10 @@ function PromptLibraryPage() {
             ...prev,
             [promptId]: { storyId, status: 'completed', error: null },
           }))
+          const name = batchTracker.current.promptNames[promptId] || ''
+          batchTracker.current.stories.push({ storyId, name })
+          batchTracker.current.done++
+          checkBatchComplete()
         } else if (status.status === 'failed') {
           clearInterval(interval)
           const failedRun = (status.runs || []).find((r) => r.status === 'failed')
@@ -165,6 +167,8 @@ function PromptLibraryPage() {
             ...prev,
             [promptId]: { storyId, status: 'failed', error: failedRun ? failedRun.error_message : 'Failed' },
           }))
+          batchTracker.current.done++
+          checkBatchComplete()
         }
       } catch (err) {
         clearInterval(interval)
@@ -172,6 +176,8 @@ function PromptLibraryPage() {
           ...prev,
           [promptId]: { storyId, status: 'failed', error: err.message },
         }))
+        batchTracker.current.done++
+        checkBatchComplete()
       }
     }, 2000)
   }
