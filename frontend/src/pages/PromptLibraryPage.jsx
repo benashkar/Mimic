@@ -189,8 +189,10 @@ function PromptLibraryPage() {
   const refinement = filterPrompts(prompts.filter((p) => p.prompt_type === 'papa'))
   const amyBots = filterPrompts(prompts.filter((p) => p.prompt_type === 'amy-bot'))
 
+  const anyBatchRunning = Object.values(batchRunning).some((r) => r.status === 'running' || r.status === 'starting')
+
   return (
-    <div>
+    <div style={{ paddingBottom: selectedPrompts.size > 0 && !anyBatchRunning ? '80px' : '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Prompt Library</h1>
         {isAdmin && (
@@ -266,7 +268,6 @@ function PromptLibraryPage() {
             selectedPrompts={selectedPrompts}
             onToggleSelect={togglePromptSelection}
             onSelectAll={selectAllSourceLists}
-            onRunSelected={handleRunSelected}
             batchRunning={batchRunning}
           />
           <PromptSection
@@ -298,15 +299,58 @@ function PromptLibraryPage() {
           selectedPrompts={selectedPrompts}
           onToggleSelect={togglePromptSelection}
           onSelectAll={selectAllSourceLists}
-          onRunSelected={handleRunSelected}
           batchRunning={batchRunning}
         />
+      )}
+
+      {/* Floating action bar — only when prompts are selected and not running */}
+      {selectedPrompts.size > 0 && !anyBatchRunning && (
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: '#333',
+          color: '#fff',
+          padding: '0.75rem 1.5rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          zIndex: 1000,
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.3)',
+        }}>
+          <span style={{ fontSize: '0.95rem' }}>
+            <strong>{selectedPrompts.size}</strong> source list{selectedPrompts.size !== 1 ? 's' : ''} selected
+          </span>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => setSelectedPrompts(new Set())}
+              style={{ padding: '0.5rem 1rem', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              Clear
+            </button>
+            <button
+              onClick={handleRunSelected}
+              style={{
+                padding: '0.5rem 1.5rem',
+                background: '#28a745',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+              }}
+            >
+              Run Selected ({selectedPrompts.size})
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
 }
 
-function GroupedSourceLists({ prompts, isAdmin, onEdit, onDelete, selectable, selectedPrompts, onToggleSelect, onSelectAll, onRunSelected, batchRunning }) {
+function GroupedSourceLists({ prompts, isAdmin, onEdit, onDelete, selectable, selectedPrompts, onToggleSelect, onSelectAll, batchRunning }) {
   if (prompts.length === 0) {
     return (
       <div style={{ marginBottom: '2rem' }}>
@@ -367,23 +411,6 @@ function GroupedSourceLists({ prompts, isAdmin, onEdit, onDelete, selectable, se
             <button onClick={onSelectAll} style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}>
               {selectedCount === prompts.length ? 'Deselect All' : 'Select All'}
             </button>
-            {selectedCount > 0 && (
-              <button
-                onClick={onRunSelected}
-                disabled={anyBatchRunning}
-                style={{
-                  padding: '0.25rem 0.75rem',
-                  fontSize: '0.85rem',
-                  background: anyBatchRunning ? '#6c757d' : '#28a745',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: anyBatchRunning ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {anyBatchRunning ? 'Running...' : `Run Selected (${selectedCount})`}
-              </button>
-            )}
           </div>
         )}
       </div>
@@ -506,7 +533,7 @@ function PromptCardList({ prompts, isAdmin, onEdit, onDelete, selectable, select
   )
 }
 
-function PromptSection({ title, prompts, isAdmin, onEdit, onDelete, showRouting, selectable, selectedPrompts, onToggleSelect, onSelectAll, onRunSelected, batchRunning }) {
+function PromptSection({ title, prompts, isAdmin, onEdit, onDelete, showRouting, selectable, selectedPrompts, onToggleSelect, onSelectAll, batchRunning }) {
   if (prompts.length === 0) {
     return (
       <div style={{ marginBottom: '2rem' }}>
@@ -555,23 +582,6 @@ function PromptSection({ title, prompts, isAdmin, onEdit, onDelete, showRouting,
             >
               {selectedCount === prompts.length ? 'Deselect All' : 'Select All'}
             </button>
-            {selectedCount > 0 && (
-              <button
-                onClick={onRunSelected}
-                disabled={anyBatchRunning}
-                style={{
-                  padding: '0.25rem 0.75rem',
-                  fontSize: '0.85rem',
-                  background: anyBatchRunning ? '#6c757d' : '#28a745',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: anyBatchRunning ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {anyBatchRunning ? 'Running...' : `Run Selected (${selectedCount})`}
-              </button>
-            )}
           </div>
         )}
       </div>
