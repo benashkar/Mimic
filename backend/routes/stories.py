@@ -1,9 +1,10 @@
 """
 Story routes — browse pipeline results.
 
-GET /api/stories          — list stories (filter by decision, opportunity, state)
-GET /api/stories/:id      — get single story with all pipeline data
-GET /api/stories/stats    — dashboard statistics
+GET /api/stories              — list stories (filter by decision, opportunity, state)
+GET /api/stories/:id          — get single story with all pipeline data
+GET /api/stories/stats        — dashboard statistics
+POST /api/stories/source-stats — per-source PAPA/PSST/rejection counts
 """
 import logging
 
@@ -11,6 +12,7 @@ from flask import Blueprint, request, jsonify
 
 from models import db
 from models.story import Story
+from models.prompt import Prompt
 from decorators.login_required import login_required
 
 logger = logging.getLogger(__name__)
@@ -96,6 +98,59 @@ def story_stats():
         "approval_rate": approval_rate,
         "by_opportunity": by_opportunity,
     })
+
+
+@stories_bp.route("/source-stats", methods=["POST"])
+@login_required
+def get_source_stats():
+    """
+    Per-source history — how many times each source text has been run
+    through PAPA vs PSST and how many times it was rejected.
+
+    Body: { "sources": ["source text 1", "source text 2", ...] }
+    Returns: { "stats": { "0": { "papa": 1, "psst": 0, "rejected": 0 }, ... } }
+    Keys are string indices matching the input array.
+    """
+    body = request.get_json(silent=True) or {}
+    sources = body.get("sources", [])
+    if not sources:
+        return jsonify({"stats": {}})
+
+    # Truncate to 2000 chars — same as pipeline does on selected_story
+    truncated = [s[:2000] for s in sources]
+    unique_texts = list(set(truncated))
+
+    # Single query: all matching stories joined with their refinement prompt
+    rows = db.session.query(
+        Story.selected_story,
+        Prompt.name,
+        Story.validation_decision,
+    ).join(
+        Prompt, Story.refinement_prompt_id == Prompt.id
+    ).filter(
+        Story.selected_story.in_(unique_texts)
+    ).all()
+
+    # Aggregate per source text
+    text_stats = {}
+    for selected_story, prompt_name, decision in rows:
+        if selected_story not in text_stats:
+            text_stats[selected_story] = {"papa": 0, "psst": 0, "rejected": 0}
+        s = text_stats[selected_story]
+        if "papa" in prompt_name.lower():
+            s["papa"] += 1
+        else:
+            s["psst"] += 1
+        if decision and decision.lower() != "approve":
+            s["rejected"] += 1
+
+    # Map back to input indices
+    stats = {}
+    for i, t in enumerate(truncated):
+        if t in text_stats:
+            stats[str(i)] = text_stats[t]
+
+    return jsonify({"stats": stats})
 
 
 @stories_bp.route("/<int:story_id>", methods=["GET"])

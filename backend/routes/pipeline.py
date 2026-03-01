@@ -257,6 +257,7 @@ def get_pipeline_status(story_id):
         "opportunity": story.opportunity,
         "state": story.state,
         "publications": story.publications,
+        "refinement_prompt_id": story.refinement_prompt_id,
         "runs": [
             {
                 "step_type": r.step_type,

@@ -21,6 +21,9 @@ function BatchReviewPage() {
   // Discarded sources: Set of "storyId-sourceIndex" keys
   const [discarded, setDiscarded] = useState(new Set())
 
+  // Per-source history stats: key = "storyId-sourceIndex", value = { papa, psst, rejected }
+  const [sourceStats, setSourceStats] = useState({})
+
   // Pipeline execution state
   const [executing, setExecuting] = useState(false)
   const [executionResults, setExecutionResults] = useState({}) // key = "storyId-sourceIndex", value = { status, error, pipelineStoryId, result }
@@ -86,6 +89,49 @@ function BatchReviewPage() {
     })
   }, [storiesParam])
 
+  // Fetch per-source history stats (PAPA/PSST/rejected counts)
+  useEffect(() => {
+    if (storyGroups.length === 0) return
+    const allSources = []
+    const keyMap = [] // maps flat index → "storyId-sourceIndex"
+    for (const group of storyGroups) {
+      for (let i = 0; i < group.sources.length; i++) {
+        allSources.push(group.sources[i].body.substring(0, 2000))
+        keyMap.push(`${group.storyId}-${i}`)
+      }
+    }
+    if (allSources.length === 0) return
+    apiClient('/stories/source-stats', {
+      method: 'POST',
+      body: JSON.stringify({ sources: allSources }),
+    }).then((data) => {
+      const mapped = {}
+      for (const [idx, stats] of Object.entries(data.stats || {})) {
+        mapped[keyMap[parseInt(idx, 10)]] = stats
+      }
+      setSourceStats(mapped)
+    }).catch(() => {})
+  }, [storyGroups])
+
+  // Auto-load last PAPA/PSST choice per opportunity from localStorage
+  useEffect(() => {
+    if (storyGroups.length === 0 || refinementPrompts.length === 0) return
+    const autoSelections = {}
+    for (const group of storyGroups) {
+      if (!group.opportunity) continue
+      const savedId = localStorage.getItem('mimic_ref_' + group.opportunity)
+      if (!savedId) continue
+      const savedInt = parseInt(savedId, 10)
+      if (!refinementPrompts.some((rp) => rp.id === savedInt)) continue
+      for (let i = 0; i < group.sources.length; i++) {
+        autoSelections[`${group.storyId}-${i}`] = savedInt
+      }
+    }
+    if (Object.keys(autoSelections).length > 0) {
+      setSelections((prev) => ({ ...autoSelections, ...prev }))
+    }
+  }, [storyGroups, refinementPrompts])
+
   function setSelection(storyId, sourceIndex, refinementPromptId) {
     const key = `${storyId}-${sourceIndex}`
     // Clear discard if selecting a refinement
@@ -98,6 +144,11 @@ function BatchReviewPage() {
       }
       return { ...prev, [key]: refinementPromptId }
     })
+    // Remember choice per opportunity
+    const group = storyGroups.find((g) => g.storyId === storyId)
+    if (group?.opportunity) {
+      localStorage.setItem('mimic_ref_' + group.opportunity, refinementPromptId)
+    }
   }
 
   function toggleDiscard(storyId, sourceIndex) {
@@ -332,6 +383,7 @@ function BatchReviewPage() {
               const isDiscarded = discarded.has(key)
               const enrichment = findEnrichment(source.body, group.enrichments)
               const execResult = executionResults[key]
+              const stats = sourceStats[key]
 
               return (
                 <div
@@ -360,8 +412,29 @@ function BatchReviewPage() {
                               : '#f9f9f9',
                   }}
                 >
-                  <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '0.4rem', color: '#333' }}>
-                    {i + 1}. {source.label}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#333' }}>
+                      {i + 1}. {source.label}
+                    </div>
+                    {stats && (
+                      <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.7rem' }}>
+                        {stats.papa > 0 && (
+                          <span style={{ padding: '0.1rem 0.35rem', borderRadius: '3px', background: '#cce5ff', color: '#004085' }}>
+                            PAPA {stats.papa}x
+                          </span>
+                        )}
+                        {stats.psst > 0 && (
+                          <span style={{ padding: '0.1rem 0.35rem', borderRadius: '3px', background: '#e2d5f1', color: '#4a235a' }}>
+                            PSST {stats.psst}x
+                          </span>
+                        )}
+                        {stats.rejected > 0 && (
+                          <span style={{ padding: '0.1rem 0.35rem', borderRadius: '3px', background: '#f8d7da', color: '#721c24' }}>
+                            {stats.rejected} rejected
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {enrichment?.type === 'twitter' && (
