@@ -297,7 +297,6 @@ function AgencyEditor({ user, availableAgencies, onSave, onCancel }) {
     const updated = assignments.map((a, i) => {
       if (i !== index) return a
       if (field === 'agency') {
-        // Reset opportunity when agency changes
         return { ...a, agency: value, opportunity: '' }
       }
       return { ...a, [field]: value }
@@ -309,6 +308,24 @@ function AgencyEditor({ user, availableAgencies, onSave, onCancel }) {
     const entry = availableAgencies.find((a) => a.agency === agencyName)
     return entry ? entry.opportunities : []
   }
+
+  function addAllAgencies() {
+    const all = availableAgencies.map((ag) => ({
+      agency: ag.agency,
+      opportunity: '__all__',
+    }))
+    setAssignments(all)
+  }
+
+  function clearAll() {
+    setAssignments([])
+  }
+
+  // Check if all agencies are already assigned with "all opportunities"
+  const hasAllAgencies = availableAgencies.length > 0 &&
+    availableAgencies.every((ag) =>
+      assignments.some((a) => a.agency === ag.agency && a.opportunity === '__all__')
+    )
 
   async function handleSave() {
     setSaving(true)
@@ -322,7 +339,7 @@ function AgencyEditor({ user, availableAgencies, onSave, onCancel }) {
     setSaving(false)
   }
 
-  const allValid = assignments.every((a) => a.agency && a.opportunity)
+  const allValid = assignments.length === 0 || assignments.every((a) => a.agency && a.opportunity)
 
   return (
     <div style={{
@@ -343,9 +360,57 @@ function AgencyEditor({ user, availableAgencies, onSave, onCancel }) {
         overflow: 'auto',
       }}>
         <h3>Edit Access: {user.display_name || user.email}</h3>
-        <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
+        <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
           Select an agency and choose &quot;All Opportunities&quot; or a specific one.
         </p>
+
+        {user.role === 'admin' && (
+          <div style={{
+            padding: '0.5rem 0.75rem',
+            background: '#fff3cd',
+            border: '1px solid #ffc107',
+            borderRadius: '4px',
+            fontSize: '0.85rem',
+            color: '#856404',
+            marginBottom: '0.75rem',
+          }}>
+            This user is an <strong>admin</strong> and already sees all prompts regardless of assignments below.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={addAllAgencies}
+            disabled={hasAllAgencies}
+            style={{
+              padding: '0.3rem 0.75rem',
+              fontSize: '0.85rem',
+              background: hasAllAgencies ? '#e9ecef' : '#007bff',
+              color: hasAllAgencies ? '#999' : '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: hasAllAgencies ? 'default' : 'pointer',
+            }}
+          >
+            {hasAllAgencies ? 'All Agencies Added' : 'Add All Agencies'}
+          </button>
+          {assignments.length > 0 && (
+            <button
+              onClick={clearAll}
+              style={{
+                padding: '0.3rem 0.75rem',
+                fontSize: '0.85rem',
+                background: '#fff',
+                color: '#dc3545',
+                border: '1px solid #dc3545',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Remove All
+            </button>
+          )}
+        </div>
 
         {assignments.map((a, i) => {
           const opps = getOpportunities(a.agency)
