@@ -16,8 +16,10 @@ function BatchReviewPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Per-source selections: key = "storyId-sourceIndex", value = refinementPromptId or null (skip)
+  // Per-source selections: key = "storyId-sourceIndex", value = refinementPromptId
   const [selections, setSelections] = useState({})
+  // Discarded sources: Set of "storyId-sourceIndex" keys
+  const [discarded, setDiscarded] = useState(new Set())
 
   // Pipeline execution state
   const [executing, setExecuting] = useState(false)
@@ -86,14 +88,27 @@ function BatchReviewPage() {
 
   function setSelection(storyId, sourceIndex, refinementPromptId) {
     const key = `${storyId}-${sourceIndex}`
+    // Clear discard if selecting a refinement
+    setDiscarded((prev) => { const next = new Set(prev); next.delete(key); return next })
     setSelections((prev) => {
-      // Toggle: if same value, remove selection (skip)
       if (prev[key] === refinementPromptId) {
         const next = { ...prev }
         delete next[key]
         return next
       }
       return { ...prev, [key]: refinementPromptId }
+    })
+  }
+
+  function toggleDiscard(storyId, sourceIndex) {
+    const key = `${storyId}-${sourceIndex}`
+    // Clear any PAPA/PSST selection
+    setSelections((prev) => { const next = { ...prev }; delete next[key]; return next })
+    setDiscarded((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
     })
   }
 
@@ -105,6 +120,7 @@ function BatchReviewPage() {
       }
     }
     setSelections(next)
+    setDiscarded(new Set())
   }
 
   function clearAllSelections() {
@@ -142,34 +158,36 @@ function BatchReviewPage() {
     })
     setExecutionResults(initial)
 
-    // Fire all pipelines in parallel
-    await Promise.allSettled(queue.map(async (q) => {
-      try {
-        const data = await apiClient('/pipeline/run', {
-          method: 'POST',
-          body: JSON.stringify({
-            story_id: q.storyId,
-            selected_story: q.sourceBody.substring(0, 2000),
-            refinement_prompt_id: q.refinementPromptId,
-          }),
-        })
+    // Fire all pipelines in parallel, each returns the story_id used
+    const results = await Promise.allSettled(queue.map(async (q) => {
+      const data = await apiClient('/pipeline/run', {
+        method: 'POST',
+        body: JSON.stringify({
+          story_id: q.storyId,
+          selected_story: q.sourceBody.substring(0, 2000),
+          refinement_prompt_id: q.refinementPromptId,
+        }),
+      })
 
-        setExecutionResults((prev) => ({
-          ...prev,
-          [q.key]: { ...prev[q.key], status: 'running', pipelineStoryId: data.story_id },
-        }))
+      setExecutionResults((prev) => ({
+        ...prev,
+        [q.key]: { ...prev[q.key], status: 'running', pipelineStoryId: data.story_id },
+      }))
 
-        // Poll for completion
-        await pollForResult(q.key, data.story_id)
-      } catch (err) {
-        setExecutionResults((prev) => ({
-          ...prev,
-          [q.key]: { ...prev[q.key], status: 'failed', error: err.message },
-        }))
-      }
+      // Poll for completion
+      await pollForResult(q.key, data.story_id)
+      return data.story_id
     }))
 
     setExecuting(false)
+
+    // Auto-navigate to pipeline results page with all story IDs
+    const storyIds = results
+      .filter((r) => r.status === 'fulfilled')
+      .map((r) => r.value)
+    if (storyIds.length > 0) {
+      window.location.href = `/pipeline-results?stories=${storyIds.join(',')}`
+    }
   }
 
   function pollForResult(key, pipelineStoryId) {
@@ -243,7 +261,7 @@ function BatchReviewPage() {
 
       <p style={{ color: '#666', marginBottom: '0.75rem' }}>
         {totalSources} source{totalSources !== 1 ? 's' : ''} found across {storyGroups.length} prompt{storyGroups.length !== 1 ? 's' : ''}.
-        Select PAPA or PSST for each source you want to refine, or leave unselected to skip.
+        Select PAPA or PSST for each source you want to refine, or Discard to skip.
       </p>
 
       {!hasExecutionResults && refinementPrompts.length > 0 && (
@@ -311,6 +329,7 @@ function BatchReviewPage() {
             {group.sources.map((source, i) => {
               const key = `${group.storyId}-${i}`
               const selectedRefId = selections[key]
+              const isDiscarded = discarded.has(key)
               const enrichment = findEnrichment(source.body, group.enrichments)
               const execResult = executionResults[key]
 
@@ -320,9 +339,12 @@ function BatchReviewPage() {
                   style={{
                     padding: '0.75rem 1rem',
                     borderRadius: '6px',
+                    opacity: isDiscarded ? 0.45 : 1,
                     border: execResult?.status === 'completed'
                       ? `2px solid ${execResult.result?.validation_decision === 'APPROVE' ? '#28a745' : '#dc3545'}`
-                      : selectedRefId
+                      : isDiscarded
+                        ? '2px solid #dc3545'
+                        : selectedRefId
                         ? '2px solid #007bff'
                         : '1px solid #ddd',
                     background: execResult?.status === 'completed'
@@ -432,9 +454,29 @@ function BatchReviewPage() {
                           </button>
                         )
                       })}
+                      <button
+                        onClick={() => toggleDiscard(group.storyId, i)}
+                        style={{
+                          padding: '0.35rem 0.9rem',
+                          fontSize: '0.85rem',
+                          background: isDiscarded ? '#dc3545' : '#e9ecef',
+                          color: isDiscarded ? '#fff' : '#888',
+                          border: isDiscarded ? 'none' : '1px solid #ced4da',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontWeight: isDiscarded ? 'bold' : 'normal',
+                        }}
+                      >
+                        Discard
+                      </button>
                       {selectedRefId && (
                         <span style={{ fontSize: '0.8rem', color: '#28a745', fontWeight: 'bold', marginLeft: '0.25rem' }}>
                           Selected
+                        </span>
+                      )}
+                      {isDiscarded && (
+                        <span style={{ fontSize: '0.8rem', color: '#dc3545', fontWeight: 'bold', marginLeft: '0.25rem' }}>
+                          Discarded
                         </span>
                       )}
                     </div>
@@ -464,6 +506,11 @@ function BatchReviewPage() {
         }}>
           <span style={{ fontSize: '0.95rem' }}>
             <strong>{selectedCount}</strong> of {totalSources} source{totalSources !== 1 ? 's' : ''} selected for refinement
+            {discarded.size > 0 && (
+              <span style={{ marginLeft: '0.75rem', color: '#ff8a80' }}>
+                ({discarded.size} discarded)
+              </span>
+            )}
           </span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button

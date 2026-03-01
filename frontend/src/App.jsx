@@ -10,6 +10,7 @@ import PipelinePage from './pages/PipelinePage'
 import StoriesPage from './pages/StoriesPage'
 import BatchResultsPage from './pages/BatchResultsPage'
 import BatchReviewPage from './pages/BatchReviewPage'
+import PipelineResultsPage from './pages/PipelineResultsPage'
 import AdminUsersPage from './pages/AdminUsersPage'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
@@ -51,6 +52,7 @@ function App() {
             <Route path="/pipeline" element={<ProtectedRoute><PipelinePage /></ProtectedRoute>} />
             <Route path="/stories" element={<ProtectedRoute><StoriesPage /></ProtectedRoute>} />
             <Route path="/batch-review" element={<ProtectedRoute><BatchReviewPage /></ProtectedRoute>} />
+            <Route path="/pipeline-results" element={<ProtectedRoute><PipelineResultsPage /></ProtectedRoute>} />
             <Route path="/batch-results" element={<ProtectedRoute><BatchResultsPage /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute><AdminUsersPage /></ProtectedRoute>} />
           </Routes>
