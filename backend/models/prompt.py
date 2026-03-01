@@ -49,6 +49,7 @@ class Prompt(db.Model):
     topic_summary = db.Column(db.Text)
     context = db.Column(db.Text)
     pitches_per_week = db.Column(db.Integer)
+    schedule_enabled = db.Column(db.Boolean, default=False)
 
     # Relationships — stories that reference this prompt
     stories_as_source = db.relationship(
@@ -87,6 +88,7 @@ class Prompt(db.Model):
                 "topic_summary": self.topic_summary,
                 "context": self.context,
                 "pitches_per_week": self.pitches_per_week,
+                "schedule_enabled": self.schedule_enabled,
             })
         return result
 
