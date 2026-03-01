@@ -164,62 +164,79 @@ function QueuePage() {
     })
     setExecutionResults(initial)
 
-    const results = await Promise.allSettled(selected.map(async ([itemIdStr, refinementPromptId]) => {
-      const itemId = parseInt(itemIdStr, 10)
-
-      const data = await apiClient('/queue/execute', {
-        method: 'POST',
-        body: JSON.stringify({ item_id: itemId, refinement_prompt_id: refinementPromptId }),
-      })
-
-      setExecutionResults((prev) => ({
-        ...prev,
-        [itemId]: { status: 'running', error: null, storyId: data.story_id },
+    try {
+      // Build batch request — single API call instead of N individual calls
+      const batchItems = selected.map(([itemIdStr, refinementPromptId]) => ({
+        item_id: parseInt(itemIdStr, 10),
+        refinement_prompt_id: refinementPromptId,
       }))
 
-      // Poll for completion
-      await new Promise((resolve) => {
-        const interval = setInterval(async () => {
-          try {
-            const status = await apiClient(`/pipeline/status/${data.story_id}`)
-            if (status.status === 'completed') {
+      const batchData = await apiClient('/queue/execute-batch', {
+        method: 'POST',
+        body: JSON.stringify({ items: batchItems, max_workers: 5 }),
+      })
+
+      // Map item_ids to story_ids from batch response
+      const itemStoryMap = {}
+      batchData.item_ids.forEach((itemId, idx) => {
+        itemStoryMap[itemId] = batchData.story_ids[idx]
+      })
+
+      // Update all items to running with their story_ids
+      setExecutionResults((prev) => {
+        const next = { ...prev }
+        for (const itemId of batchData.item_ids) {
+          next[itemId] = { status: 'running', error: null, storyId: itemStoryMap[itemId] }
+        }
+        return next
+      })
+
+      // Poll each story for completion
+      const storyIds = batchData.story_ids
+      await Promise.allSettled(batchData.item_ids.map(async (itemId, idx) => {
+        const storyId = storyIds[idx]
+        await new Promise((resolve) => {
+          const interval = setInterval(async () => {
+            try {
+              const status = await apiClient(`/pipeline/status/${storyId}`)
+              if (status.status === 'completed') {
+                clearInterval(interval)
+                setExecutionResults((prev) => ({
+                  ...prev,
+                  [itemId]: { status: 'completed', error: null, storyId, result: status },
+                }))
+                resolve()
+              } else if (status.status === 'failed') {
+                clearInterval(interval)
+                const failedRun = (status.runs || []).find((r) => r.status === 'failed')
+                setExecutionResults((prev) => ({
+                  ...prev,
+                  [itemId]: { status: 'failed', error: failedRun ? failedRun.error_message : 'Failed', storyId },
+                }))
+                resolve()
+              }
+            } catch (err) {
               clearInterval(interval)
               setExecutionResults((prev) => ({
                 ...prev,
-                [itemId]: { status: 'completed', error: null, storyId: data.story_id, result: status },
-              }))
-              resolve()
-            } else if (status.status === 'failed') {
-              clearInterval(interval)
-              const failedRun = (status.runs || []).find((r) => r.status === 'failed')
-              setExecutionResults((prev) => ({
-                ...prev,
-                [itemId]: { status: 'failed', error: failedRun ? failedRun.error_message : 'Failed', storyId: data.story_id },
+                [itemId]: { status: 'failed', error: err.message, storyId },
               }))
               resolve()
             }
-          } catch (err) {
-            clearInterval(interval)
-            setExecutionResults((prev) => ({
-              ...prev,
-              [itemId]: { status: 'failed', error: err.message, storyId: data.story_id },
-            }))
-            resolve()
-          }
-        }, 2000)
-      })
+          }, 2000)
+        })
+        return storyId
+      }))
 
-      return data.story_id
-    }))
+      setExecuting(false)
 
-    setExecuting(false)
-
-    // Auto-navigate to pipeline results with all story IDs
-    const storyIds = results
-      .filter((r) => r.status === 'fulfilled')
-      .map((r) => r.value)
-    if (storyIds.length > 0) {
-      window.location.href = `/pipeline-results?stories=${storyIds.join(',')}`
+      // Auto-navigate to pipeline results with all story IDs
+      if (storyIds.length > 0) {
+        window.location.href = `/pipeline-results?stories=${storyIds.join(',')}`
+      }
+    } catch (err) {
+      setError(err.message)
+      setExecuting(false)
     }
   }
 

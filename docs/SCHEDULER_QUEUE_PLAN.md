@@ -88,3 +88,48 @@ All phases on `staging` branch. Feature branches preserved for rollback:
 
 - **Migration runner**: SQLAlchemy 2.0 can't execute multi-statement SQL in one `text()` call
 - **Fix**: split on semicolons, execute each statement individually in `app.py _auto_migrate()`
+
+---
+
+## Phase 6: Speed-Up Optimizations
+
+Six independent features to reduce pipeline latency, eliminate waste, and improve UX.
+Each ships as its own feature branch → PR to staging for independent testing.
+
+### PR 1: `feature/parallel-refinement` — Parallel Refinement Execution
+- **Problem:** Queue "Run All" fires pipelines sequentially — 10 sources × 30s = 5 min
+- **Solution:** `POST /api/queue/execute-batch` uses `ThreadPoolExecutor(max_workers=5)` for concurrent runs
+- **Files:** `backend/routes/queue.py`, `frontend/src/pages/QueuePage.jsx`, `tests/test_routes_queue.py`
+
+### PR 2: `feature/source-dedup` — Source Deduplication
+- **Problem:** Same tweet/URL appears in consecutive daily scheduler runs, wasting Grok calls
+- **Solution:** Hash source URLs, skip items already seen in last N days (configurable via `DEDUP_WINDOW_DAYS`)
+- **Files:** `backend/migrations/011_add_seen_sources.sql`, `backend/models/seen_source.py`, `backend/services/scheduler_service.py`, `backend/config.py`, `tests/test_source_dedup.py`
+
+### PR 3: `feature/prefetch-enrichment` — Pre-fetch URL Enrichment on Queue Items
+- **Problem:** QueuePage re-fetches enrichments via `/pipeline/status/{story_id}` per story on load
+- **Solution:** Store enrichment JSON on QueueItem during scheduler run, serve directly in API
+- **Files:** `backend/migrations/012_add_queue_enrichment.sql`, `backend/models/queue_item.py`, `backend/services/scheduler_service.py`, `frontend/src/pages/QueuePage.jsx`, `tests/test_scheduler_service.py`
+
+### PR 4: `feature/smart-scheduling` — Smart Schedule Frequency
+- **Problem:** All scheduled prompts run daily at the same time
+- **Solution:** `schedule_frequency` (daily/weekdays/mwf/weekly) and `schedule_time` fields on prompts
+- **Files:** `backend/migrations/013_add_schedule_fields.sql`, `backend/models/prompt.py`, `backend/routes/prompts.py`, `backend/services/scheduler_service.py`, `frontend/src/pages/PromptLibraryPage.jsx`, `tests/test_scheduler_service.py`
+
+### PR 5: `feature/batch-refinement` — Batch Refinement Prompt (Experimental)
+- **Problem:** Running PAPA/PSST on each source individually = N API calls
+- **Solution:** Optionally batch up to N sources into a single Grok call, parse multi-source output back
+- **Files:** `backend/routes/queue.py`, `backend/services/pipeline_service.py`, `frontend/src/pages/QueuePage.jsx`, `tests/test_batch_refinement.py`
+
+### PR 6: `feature/sse-push` — SSE Push Events (Replace Polling)
+- **Problem:** Frontend polls `/pipeline/status/{story_id}` every 2s — wasteful and laggy
+- **Solution:** Server-Sent Events endpoint with internal pub/sub event bus
+- **Files:** `backend/routes/events.py`, `backend/routes/__init__.py`, `backend/services/pipeline_service.py`, `backend/routes/queue.py`, `frontend/src/utils/pipelineEvents.js`, `frontend/src/pages/QueuePage.jsx`, `frontend/src/pages/BatchReviewPage.jsx`, `tests/test_routes_events.py`
+
+### Execution Order
+1. PR 1: Parallel refinement (biggest user-facing impact)
+2. PR 2: Source dedup (reduces daily noise)
+3. PR 3: Pre-fetch enrichment (quick win, less API calls on page load)
+4. PR 4: Smart scheduling (small schema + UI)
+5. PR 5: Batch refinement (experimental, test quality)
+6. PR 6: SSE push (replaces polling everywhere)

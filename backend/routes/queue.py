@@ -1,14 +1,17 @@
 """
 Queue routes — Shared review queue for scheduled source list results.
 
-GET    /api/queue          — List pending items (permission-filtered)
-POST   /api/queue/claim    — Mark items as claimed by current user
-POST   /api/queue/discard  — Mark items as discarded
-POST   /api/queue/execute  — Run pipeline on a queue item (background thread)
-GET    /api/queue/stats    — Counts by status for dashboard
+GET    /api/queue              — List pending items (permission-filtered)
+POST   /api/queue/claim        — Mark items as claimed by current user
+POST   /api/queue/discard      — Mark items as discarded
+POST   /api/queue/execute      — Run pipeline on a queue item (background thread)
+POST   /api/queue/execute-batch — Run multiple pipelines concurrently (ThreadPoolExecutor)
+GET    /api/queue/stats        — Counts by status for dashboard
 """
 import logging
 import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify, g, current_app
@@ -228,6 +231,130 @@ def execute_item():
         "story_id": story_id,
         "status": "running",
     }), 202
+
+
+# In-memory batch status tracking (batch_id → { item_ids, status, results })
+_batch_status = {}
+
+
+@queue_bp.route("/execute-batch", methods=["POST"])
+@login_required
+def execute_batch():
+    """
+    Run multiple queue items through the pipeline concurrently.
+
+    Body: { "items": [{ "item_id": int, "refinement_prompt_id": int }, ...], "max_workers": int (default 5) }
+    Returns 202 with { batch_id, item_ids, status: "running" }
+    """
+    body = request.get_json(silent=True) or {}
+    items_input = body.get("items") or []
+    max_workers = min(body.get("max_workers") or 5, 10)  # Cap at 10
+
+    if not items_input:
+        return jsonify({"error": "items is required (list of {item_id, refinement_prompt_id})"}), 400
+
+    # Validate and prepare all items before launching threads
+    prepared = []
+    for entry in items_input:
+        item_id = entry.get("item_id")
+        refinement_prompt_id = entry.get("refinement_prompt_id")
+        if not item_id or not refinement_prompt_id:
+            continue
+
+        item = db.session.get(QueueItem, item_id)
+        if not item or item.status not in ("pending", "claimed"):
+            continue
+
+        selected_story = item.body[:2000]
+        story_id = item.story_id
+
+        # Mark as claimed
+        item.status = "claimed"
+        item.claimed_by = g.current_user.email
+        item.claimed_at = datetime.now(timezone.utc)
+
+        # Create placeholder "running" refinement run for status tracking
+        placeholder_run = PipelineRun(
+            story_id=story_id,
+            prompt_id=refinement_prompt_id,
+            step_type="refinement",
+            status="running",
+            input_text="(pipeline starting...)",
+        )
+        db.session.add(placeholder_run)
+
+        prepared.append({
+            "item_id": item.id,
+            "story_id": story_id,
+            "selected_story": selected_story,
+            "refinement_prompt_id": refinement_prompt_id,
+        })
+
+    if not prepared:
+        return jsonify({"error": "No valid items to execute"}), 400
+
+    db.session.commit()
+
+    batch_id = str(uuid.uuid4())[:8]
+    item_ids = [p["item_id"] for p in prepared]
+    _batch_status[batch_id] = {
+        "item_ids": item_ids,
+        "status": "running",
+        "results": {},
+    }
+
+    # Launch concurrent execution in a background thread
+    app = current_app._get_current_object()
+    user_email = g.current_user.email
+
+    def _run_batch():
+        with app.app_context():
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {}
+                for p in prepared:
+                    future = executor.submit(
+                        _run_queue_pipeline_background,
+                        app, p["item_id"], p["story_id"],
+                        p["selected_story"], p["refinement_prompt_id"],
+                        user_email,
+                    )
+                    futures[future] = p["item_id"]
+
+                for future in futures:
+                    item_id = futures[future]
+                    try:
+                        future.result()
+                        _batch_status[batch_id]["results"][item_id] = "completed"
+                    except Exception:
+                        _batch_status[batch_id]["results"][item_id] = "failed"
+
+            _batch_status[batch_id]["status"] = "completed"
+
+    thread = threading.Thread(target=_run_batch)
+    thread.start()
+
+    logger.info("[OK] Batch %s started: %d items, max_workers=%d", batch_id, len(prepared), max_workers)
+    return jsonify({
+        "batch_id": batch_id,
+        "item_ids": item_ids,
+        "story_ids": [p["story_id"] for p in prepared],
+        "status": "running",
+    }), 202
+
+
+@queue_bp.route("/batch-status/<batch_id>", methods=["GET"])
+@login_required
+def batch_status(batch_id):
+    """Get status of a batch execution."""
+    batch = _batch_status.get(batch_id)
+    if not batch:
+        return jsonify({"error": "Batch not found"}), 404
+    return jsonify({
+        "batch_id": batch_id,
+        "status": batch["status"],
+        "item_ids": batch["item_ids"],
+        "results": batch["results"],
+    })
 
 
 @queue_bp.route("/stats", methods=["GET"])

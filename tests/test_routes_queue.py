@@ -256,6 +256,134 @@ class TestExecuteItem:
         assert "status" in resp.get_json()["error"]
 
 
+class TestExecuteBatch:
+    """Tests for POST /api/queue/execute-batch."""
+
+    @patch("routes.queue.ThreadPoolExecutor")
+    @patch("routes.queue.threading.Thread")
+    def test_execute_batch_returns_202(self, mock_thread, mock_executor, client, auth_headers, db_session):
+        """Batch execute validates items, creates placeholders, returns 202."""
+        headers = auth_headers("admin@plmediaagency.com", "admin")
+        prompt, story = _make_prompt_and_story(db_session)
+        item1 = _make_queue_item(db_session, story, prompt, label="S1", body="content 1")
+        item2 = _make_queue_item(db_session, story, prompt, label="S2", body="content 2")
+
+        ref_prompt = Prompt(
+            prompt_type="papa", name="PAPA", prompt_text="refine", created_by="test"
+        )
+        db_session.add(ref_prompt)
+        db_session.flush()
+        db_session.commit()
+
+        mock_thread.return_value = MagicMock()
+
+        resp = client.post("/api/queue/execute-batch", json={
+            "items": [
+                {"item_id": item1.id, "refinement_prompt_id": ref_prompt.id},
+                {"item_id": item2.id, "refinement_prompt_id": ref_prompt.id},
+            ],
+            "max_workers": 3,
+        }, headers=headers)
+        assert resp.status_code == 202
+        data = resp.get_json()
+        assert data["status"] == "running"
+        assert len(data["item_ids"]) == 2
+        assert len(data["story_ids"]) == 2
+        assert "batch_id" in data
+
+        # Verify both items are claimed
+        db_session.expire_all()
+        assert db_session.get(QueueItem, item1.id).status == "claimed"
+        assert db_session.get(QueueItem, item2.id).status == "claimed"
+
+        # Verify placeholder runs created
+        runs = PipelineRun.query.filter_by(step_type="refinement", status="running").all()
+        assert len(runs) == 2
+
+    def test_execute_batch_empty_items(self, client, auth_headers):
+        """Batch with empty items list returns 400."""
+        headers = auth_headers("admin@plmediaagency.com", "admin")
+        resp = client.post("/api/queue/execute-batch", json={"items": []}, headers=headers)
+        assert resp.status_code == 400
+
+    def test_execute_batch_no_items_key(self, client, auth_headers):
+        """Batch without items key returns 400."""
+        headers = auth_headers("admin@plmediaagency.com", "admin")
+        resp = client.post("/api/queue/execute-batch", json={}, headers=headers)
+        assert resp.status_code == 400
+
+    @patch("routes.queue.threading.Thread")
+    def test_execute_batch_skips_completed_items(self, mock_thread, client, auth_headers, db_session):
+        """Batch skips items that are already completed."""
+        headers = auth_headers("admin@plmediaagency.com", "admin")
+        prompt, story = _make_prompt_and_story(db_session)
+        item_ok = _make_queue_item(db_session, story, prompt, label="OK", body="ok", status="pending")
+        item_done = _make_queue_item(db_session, story, prompt, label="Done", body="done", status="completed")
+
+        ref_prompt = Prompt(
+            prompt_type="papa", name="PAPA", prompt_text="refine", created_by="test"
+        )
+        db_session.add(ref_prompt)
+        db_session.flush()
+        db_session.commit()
+
+        mock_thread.return_value = MagicMock()
+
+        resp = client.post("/api/queue/execute-batch", json={
+            "items": [
+                {"item_id": item_ok.id, "refinement_prompt_id": ref_prompt.id},
+                {"item_id": item_done.id, "refinement_prompt_id": ref_prompt.id},
+            ],
+        }, headers=headers)
+        assert resp.status_code == 202
+        data = resp.get_json()
+        # Only the pending item should be included
+        assert len(data["item_ids"]) == 1
+        assert data["item_ids"][0] == item_ok.id
+
+    @patch("routes.queue.threading.Thread")
+    def test_execute_batch_max_workers_capped(self, mock_thread, client, auth_headers, db_session):
+        """max_workers is capped at 10 even if higher value requested."""
+        headers = auth_headers("admin@plmediaagency.com", "admin")
+        prompt, story = _make_prompt_and_story(db_session)
+        item = _make_queue_item(db_session, story, prompt)
+
+        ref_prompt = Prompt(
+            prompt_type="papa", name="PAPA", prompt_text="refine", created_by="test"
+        )
+        db_session.add(ref_prompt)
+        db_session.flush()
+        db_session.commit()
+
+        mock_thread.return_value = MagicMock()
+
+        resp = client.post("/api/queue/execute-batch", json={
+            "items": [{"item_id": item.id, "refinement_prompt_id": ref_prompt.id}],
+            "max_workers": 50,
+        }, headers=headers)
+        assert resp.status_code == 202
+
+    def test_execute_batch_requires_auth(self, client):
+        """POST without auth returns 401."""
+        resp = client.post("/api/queue/execute-batch", json={"items": []})
+        assert resp.status_code == 401
+
+
+class TestBatchStatus:
+    """Tests for GET /api/queue/batch-status/<batch_id>."""
+
+    def test_batch_not_found(self, client, auth_headers):
+        """Unknown batch_id returns 404."""
+        headers = auth_headers("admin@plmediaagency.com", "admin")
+        resp = client.get("/api/queue/batch-status/nonexistent", headers=headers)
+        assert resp.status_code == 404
+
+    def test_requires_auth(self, client):
+        """GET without auth returns 401."""
+        resp = client.get("/api/queue/batch-status/abc")
+        assert resp.status_code == 401
+
+
 class TestQueueStats:
     """Tests for GET /api/queue/stats."""
 
