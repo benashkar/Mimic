@@ -3,10 +3,6 @@ Flask configuration classes.
 
 Config reads from environment variables with sensible defaults.
 TestConfig overrides for pytest with SQLite in-memory.
-
-The postgres:// → postgresql:// fix handles Render's connection string
-format, which uses the older 'postgres://' prefix that SQLAlchemy 1.4+
-no longer accepts.
 """
 import os
 
@@ -17,13 +13,10 @@ class Config:
     # Flask core
     SECRET_KEY = os.environ.get("SECRET_KEY") or "dev-secret-key-change-me"
 
-    # Database — Render uses postgres:// but SQLAlchemy needs postgresql://
-    _raw_db_url = os.environ.get("DATABASE_URL") or "sqlite:///mimic_dev.db"
-    SQLALCHEMY_DATABASE_URI = _raw_db_url.replace(
-        "postgres://", "postgresql://", 1
-    )
+    # Database — MySQL on db99 RDS via PyMySQL
+    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL") or "sqlite:///mimic_dev.db"
 
-    # SQLAlchemy pool settings for production PostgreSQL
+    # SQLAlchemy pool settings for production MySQL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,  # Verify connections before use
