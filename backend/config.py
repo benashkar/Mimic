@@ -5,6 +5,7 @@ Config reads from environment variables with sensible defaults.
 TestConfig overrides for pytest with SQLite in-memory.
 """
 import os
+from utils.aws_secrets import get_database_url as _get_aws_database_url
 
 
 class Config:
@@ -13,8 +14,8 @@ class Config:
     # Flask core
     SECRET_KEY = os.environ.get("SECRET_KEY") or "dev-secret-key-change-me"
 
-    # Database — MySQL on db99 RDS via PyMySQL
-    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL") or "sqlite:///mimic_dev.db"
+    # Database — MySQL on db99 RDS via AWS Secrets Manager
+    SQLALCHEMY_DATABASE_URI = _get_aws_database_url()
 
     # SQLAlchemy pool settings for production MySQL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
